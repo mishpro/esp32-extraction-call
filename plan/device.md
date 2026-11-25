@@ -33,6 +33,19 @@ device/
 
 `frames.py` держим **без** uV-специфичных импортов → тот же файл тестируется на CPython (pytest): маскирование/разбор/сборка фрагментов.
 
+### Статус реализации (2026-11-26)
+
+| Файл | Статус |
+|---|---|
+| `frames.py` | готово: 61 тест |
+| `proto.py` | готово: 107 тестов + сверка со схемой |
+| `ws_client.py` | готово: handshake §7.1, poll-чтение §7.3, backoff §6; 15 тестов, включая TCP-раундтрип |
+| `button.py`, `display.py`, `state.py`, `net.py`, `main.py` | ждут плату (WiFi-доступы + экран) |
+
+`ws_client.py` проверен **тем же файлом** на CPython против реального сервера: `connect()` → `hello` → `press` → `ack(server)` → `ack(delivered)`, HTTP-ответ разобран до первого кадра. Импорты (`socket`, `select`, `hashlib`, `binascii`, `os`, `random`, `time`) есть и в MicroPython, и в CPython.
+
+API: `read_event(timeout_ms)` → `(KIND_MESSAGE|KIND_PING|KIND_PONG|KIND_CLOSE, opcode, payload)` или `None`; `ping` получает `pong` автоматически; `send_text()` маскирует и не фрагментирует; `backoff_s(attempt, cap_s=10.0)` — джиттер ±20 %, результат не больше `cap_s`.
+
 ## Состояния кнопки
 
 Из §4.2: `BOOT`, `OFFLINE`, `ARMED`, `SENT`, `WAIT_ETA`, `COUNTDOWN`, `ARRIVED`, `NO_ACK`.
@@ -80,7 +93,9 @@ Backoff `min(60, 2^attempt) ± 20 %`, сброс счётчика при `hello_
 .venv-tools/bin/mpremote connect /dev/ttyUSB0 run main.py
 ```
 
-`config.py` генерируется локально: `ssid`, `psk`, `server_host`, `server_port`, `token` (в MVP — пусто, авторизация выключена), `device_id` (8 hex, генерируется при первом запуске, хранится на плате — §3).
+`config.py` генерируется локально: `ssid`, `psk`, `server_host`, `server_port`, `token`, `device_id` (8 hex, генерируется при первом запуске, хранится на плате — §3).
+
+**Токен в MVP не пустой.** Авторизация выключена (`AUTH_REQUIRED=false`), сервер значение не проверяет, но схема §4.1 и сервер требуют `token` длиной ≥ 1: пустая строка — это `error(bad_request)` и close `4400`. Поэтому в `config.py` кладём заглушку, например `token = "dev-token"`.
 
 ## Энергопотребление
 

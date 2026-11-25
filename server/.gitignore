@@ -1,0 +1,6 @@
+# Persisted runtime state (last_press / last_status / seq watermarks)
+.state/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/

@@ -36,7 +36,7 @@ app/
 
 - **OkHttp WebSocket** — готовый клиент, поддержка ping/pong и колбэков.
 - **Foreground Service**: сокет живёт в сервисе, UI подписан на `StateFlow` из сервиса.
-- **Токен** — в `EncryptedSharedPreferences` (`androidx.security:security-crypto`), в сокет передаётся первым кадром `hello`.
+- **Токен** — в `EncryptedSharedPreferences` (`androidx.security:security-crypto`), в сокет передаётся первым кадром `hello`. В MVP авторизация выключена, но §4.1 требует `token` длиной ≥ 1: пустая строка даёт close `4400`, поэтому по умолчанию используется заглушка `dev-token` (реальный секрет — при провижининге, S5/S6).
 - **Каналы уведомлений**: `signals` (HIGH) — сигнал от кнопки; `status` (LOW) — статусы. На Android 13+ нужно разрешение `POST_NOTIFICATIONS`.
 
 ## Протокол в приложении
