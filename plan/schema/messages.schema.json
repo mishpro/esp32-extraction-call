@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://guidecaller.local/schema/messages.schema.json",
+  "title": "Guidecaller WS protocol v1",
+  "description": "Машиночитаемая выжимка из drafts/Протокол.md v1.0. Источник правды — сам документ; при расхождении правится Протокол.md, сюда переносится следом.",
+  "oneOf": [
+    { "$ref": "#/$defs/hello" },
+    { "$ref": "#/$defs/hello_ok" },
+    { "$ref": "#/$defs/press" },
+    { "$ref": "#/$defs/timer" },
+    { "$ref": "#/$defs/cancel" },
+    { "$ref": "#/$defs/ack" },
+    { "$ref": "#/$defs/status" },
+    { "$ref": "#/$defs/ping" },
+    { "$ref": "#/$defs/pong" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "v": { "type": "integer", "const": 1 },
+    "t_epoch": { "type": "integer", "minimum": 0, "description": "UTC epoch seconds, серверная шкала" },
+    "seq": { "type": "integer", "minimum": 1, "description": "монотонный счётчик отправителя от 1, не хранится" },
+    "hexid": { "type": "string", "pattern": "^[0-9a-f]{8}$" },
+    "state": {
+      "type": "string",
+      "enum": ["BOOT", "OFFLINE", "ARMED", "SENT", "WAIT_ETA", "COUNTDOWN", "ARRIVED", "NO_ACK"]
+    },
+    "hello": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "role", "token", "id"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "hello" },
+        "role": { "type": "string", "enum": ["device", "app"] },
+        "token": { "type": "string", "minLength": 1 },
+        "id": { "$ref": "#/$defs/hexid" },
+        "fw": { "type": "string", "description": "только для device" }
+      }
+    },
+    "hello_ok": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "session", "t_epoch", "peer"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "hello_ok" },
+        "session": { "type": "string" },
+        "t_epoch": { "$ref": "#/$defs/t_epoch" },
+        "peer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "online", "state"],
+          "properties": {
+            "id": { "$ref": "#/$defs/hexid" },
+            "online": { "type": "boolean" },
+            "state": { "$ref": "#/$defs/state" },
+            "remaining_s": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "press": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "seq", "t_epoch"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "press" },
+        "seq": { "$ref": "#/$defs/seq" },
+        "t_epoch": { "$ref": "#/$defs/t_epoch" },
+        "from": { "$ref": "#/$defs/hexid", "description": "добавляется сервером при пересылке" }
+      }
+    },
+    "timer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "seq", "duration_s", "t_epoch"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "timer" },
+        "seq": { "$ref": "#/$defs/seq" },
+        "duration_s": { "type": "integer", "minimum": 60, "maximum": 86400 },
+        "t_epoch": { "$ref": "#/$defs/t_epoch" },
+        "deadline_t": { "type": "integer", "minimum": 0, "description": "добавляется сервером при пересылке кнопке" }
+      }
+    },
+    "cancel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "seq", "t_epoch"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "cancel" },
+        "seq": { "$ref": "#/$defs/seq" },
+        "t_epoch": { "$ref": "#/$defs/t_epoch" }
+      }
+    },
+    "ack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "seq", "ok", "stage"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "ack" },
+        "seq": { "$ref": "#/$defs/seq" },
+        "ok": { "type": "boolean" },
+        "stage": { "type": "string", "enum": ["server", "delivered"] }
+      }
+    },
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "t_epoch", "device", "app"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "status" },
+        "t_epoch": { "$ref": "#/$defs/t_epoch" },
+        "device": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["online", "state"],
+          "properties": {
+            "online": { "type": "boolean" },
+            "state": { "$ref": "#/$defs/state" },
+            "remaining_s": { "type": "integer", "minimum": 0 },
+            "fw": { "type": "string" }
+          }
+        },
+        "app": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["online"],
+          "properties": { "online": { "type": "boolean" } }
+        }
+      }
+    },
+    "ping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "t_epoch"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "ping" },
+        "t_epoch": { "$ref": "#/$defs/t_epoch" }
+      }
+    },
+    "pong": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "t_epoch"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "pong" },
+        "t_epoch": { "$ref": "#/$defs/t_epoch" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "code", "msg"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "error" },
+        "code": {
+          "type": "string",
+          "enum": ["auth_failed", "bad_request", "bad_duration", "no_peer", "duplicate", "internal"]
+        },
+        "msg": { "type": "string" },
+        "seq": { "$ref": "#/$defs/seq" }
+      }
+    }
+  }
+}
