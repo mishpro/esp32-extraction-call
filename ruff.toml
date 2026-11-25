@@ -1,0 +1,3 @@
+# Vendored third-party code is copied as-is and not linted.
+# server/ has its own pyproject.toml with a separate ruff config.
+extend-exclude = ["device/lib"]

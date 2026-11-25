@@ -12,3 +12,5 @@ venv/
 # Секреты — никогда не коммитить (R-18 в ТЗ.md)
 secrets.json
 *.secret
+# Локальный конфиг платы: WiFi PSK, токен (шаблон — device/config.example.py)
+device/config.py
