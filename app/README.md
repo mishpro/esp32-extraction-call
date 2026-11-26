@@ -112,6 +112,21 @@ adb shell am start -n io.guidecaller.app/.ui.MainActivity
 На эмуляторе проверено: connected, уведомление при нажатии в фоне и с погашенным
 экраном, `ack(delivered)`, Disconnect, повторный `seq=1` после «перезагрузки» кнопки.
 
-Осталось: установка на CMF Phone (1), настройка «Батарея → Без ограничений» для
-Nothing OS, FCM — S6.
+**CMF Phone 1 (`A015`, Android 16, API 36):** установлено через `adb`, `app_id 07d4a347`,
+`POST_NOTIFICATIONS` выдан, Doze-whitelist:
+
+```bash
+adb shell dumpsys deviceidle whitelist +io.guidecaller.app
+```
+
+Сервис `isForeground=true`, `types=0x40000000` (`specialUse`). При заблокированном
+экране 8 нажатий реальной кнопки — все `press seq 2…9` подтверждены `ack(delivered)`,
+push-уведомления видны (Android группирует их в `signals`). На кнопке `WAIT ETA`.
+
+В Nothing OS дополнительно выставь **Приложения → Guidecaller → Батарея → Без ограничений**.
+Если на локскрине не видно текст уведомления — это настройка приватности Android,
+а не приложения; heads-up и звук приходят.
+
+Осталось: FCM — S6.
+
 

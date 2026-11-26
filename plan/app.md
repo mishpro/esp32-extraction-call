@@ -49,6 +49,36 @@ app/
 - `status` → обновить UI: `device.online`, `device.state`, `app.online`.
 - `error` → по коду: `auth_failed` — не переподключаться, показать `AUTH FAIL`; `no_peer` — показать `NO BUTTON`.
 
+## Реализация S3.5–3.8 (2026-11-26)
+
+| Компонент | Как сделано |
+|---|---|
+| `SignalService` | foreground, тип `specialUse` (+ `FOREGROUND_SERVICE_SPECIAL_USE` и `PROPERTY_SPECIAL_USE_FGS_SUBTYPE`), `START_REDELIVER_INTENT`; `startForeground` до старта сессии |
+| Связь с UI | process-wide `SignalBus` (`StateFlow<SignalState>`), UI — `collectAsStateWithLifecycle`; Binder не нужен |
+| Каналы | `signals` (HIGH, «Вызов»), `status` (LOW, постоянное уведомление сервиса) |
+| `press` | дедуп `(from, seq, t_epoch)`; уведомление с серверным `t_epoch`; `ack(delivered)` отправляется даже на дубликат (потерянный ack) |
+| UI | адрес сервера, Connect/Disconnect, `WS: …`, `Button: online/offline` + состояние, `App: online/offline`, offset часов, список нажатий (`#seq`, server/local, from), баннеры `AUTH FAIL` / `NO BUTTON` |
+| Разрешения | `POST_NOTIFICATIONS` запрашивается на Connect (Android 13+); отказ не блокирует сокет и `ack` |
+| Зависимости | `androidx.lifecycle:lifecycle-runtime-compose:2.10.0` |
+
+**Эмулятор Android 16 (API 36), KVM:**
+
+- `WS: connected`, `Button: online / WAIT ETA`, `App: online`;
+- `press` → уведомление `signals` («Вызов / Нажатие в HH:MM:SS») и `ack(delivered)`;
+- фон и погашенный экран: сервис `isForeground=true`, `types=0x40000000` (`specialUse`), уведомление приходит;
+- Disconnect: сервис остановлен, FGS-уведомление убрано, UI `WS: idle`, список очищен;
+- ребут кнопки (`seq` снова 1): нажатие не теряется.
+
+**Реальный CMF Phone 1 (`A015`, Android 16 / API 36):**
+
+- установка через `adb`, `POST_NOTIFICATIONS` выдан, `app_id 07d4a347`;
+- Doze-whitelist: `user,io.guidecaller.app`;
+- сервис `isForeground=true`, `types=0x40000000` (`specialUse`);
+- при заблокированном экране (`mWakefulness=Dozing`) 8 нажатий реальной кнопки: `press seq 2…9`, каждое подтверждено `ack(delivered)`, push-уведомления видны (Android сгруппировал в `signals`);
+- на кнопке — `WAIT ETA`.
+
+Тестов на JVM: **52** (Protocol 18, Backoff 9, WsClient 2, SignalReducer 16, TimeFormat 7). MVP S0–S3 замкнут. Дальше S4 (timer/cancel) и S6 (FCM).
+
 ## UI MVP
 
 - Статус соединения с сервером (`WS: connected / reconnecting`).

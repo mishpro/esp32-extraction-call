@@ -77,7 +77,7 @@
 
 **S3 закрыт, когда:** нажатие кнопки → уведомление на телефоне, приложение шлёт `ack(delivered)`, кнопка показывает `WAIT ETA`.
 
-**Прогресс (2026-11-26): 3.1–3.7 готовы.** 52 JVM-теста (Protocol 18, Backoff 9, WsClient 2, SignalReducer 16, TimeFormat 7). На эмуляторе Android 16 (API 36): `WS: connected`, сервис `specialUse` (`isForeground=true`, `types=0x40000000`), уведомление `signals` при нажатии в фоне и с погашенным экраном, `ack(delivered)` в логе сервера, Disconnect останавливает сервис. Осталось 3.8: установка на CMF Phone (1), «батарея без ограничений», проверка Nothing OS.
+**Прогресс (2026-11-26): 3.1–3.8 готовы, MVP S0–S3 замкнут.** 52 JVM-теста. Эмулятор API 36 и реальный CMF Phone 1 (`A015`, Android 16): `WS: connected`, сервис `specialUse` (`isForeground=true`, `types=0x40000000`), уведомление `signals` при нажатии в фоне и с погашенным экраном, `ack(delivered)` в логе сервера. На телефоне: `POST_NOTIFICATIONS`, Doze-whitelist, 8 нажатий при `Dozing` — все подтверждены. Дальше S4 (timer/cancel) и S6 (FCM).
 
 ---
 
