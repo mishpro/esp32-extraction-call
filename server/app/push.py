@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -23,6 +24,7 @@ import httpx
 
 FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
 FCM_URL = "https://fcm.googleapis.com/v1/projects/{project}/messages:send"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
 DEFAULT_TIMEOUT_S = 5.0
 
 
@@ -89,28 +91,61 @@ class FcmPushSender:
             raise ValueError("FCM credentials have no project_id")
         self._credentials = info
         self._token: str | None = None
+        self._expiry = 0.0
+        self._signer: Any = None
         self._token_lock = asyncio.Lock()
         self._client = httpx.AsyncClient(timeout=timeout_s, transport=transport)
 
     # -- OAuth -----------------------------------------------------------
 
-    def _refresh_token(self) -> str:
-        """Blocking: runs in a worker thread (google-auth is synchronous)."""
-        from google.auth.transport.requests import Request
-        from google.oauth2 import service_account
+    async def _fetch_token(self) -> tuple[str, float]:
+        """Service-account JWT -> OAuth access token, without the requests transport.
 
-        creds = service_account.Credentials.from_service_account_info(
-            self._credentials, scopes=[FCM_SCOPE]
+        ``google-auth`` picks its transport lazily, and the default one needs
+        ``requests``; the server already speaks HTTP through httpx, so the
+        standard jwt-bearer grant is issued here directly.
+        """
+        from google.auth import jwt as google_jwt
+        from google.auth.crypt import RSASigner
+
+        if self._signer is None:
+            self._signer = RSASigner.from_service_account_info(self._credentials)
+        now = int(time.time())
+        assertion = google_jwt.encode(
+            self._signer,
+            {
+                "iss": self._credentials["client_email"],
+                "scope": FCM_SCOPE,
+                "aud": TOKEN_URL,
+                "iat": now,
+                "exp": now + 3600,
+            },
         )
-        creds.refresh(Request())
-        return creds.token
+        # google-auth returns bytes; the form value must be the JWT text.
+        if isinstance(assertion, bytes):
+            assertion = assertion.decode("ascii")
+        response = await self._client.post(
+            TOKEN_URL,
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": assertion,
+            },
+        )
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"token endpoint returned {response.status_code}: {_short(response.text, 200)}"
+            )
+        body = response.json()
+        lifetime = float(body.get("expires_in", 3600))
+        return body["access_token"], time.time() + lifetime - 60
 
     async def _access_token(self) -> str:
         async with self._token_lock:
-            if self._token is not None:
+            if self._token is not None and time.time() < self._expiry:
                 return self._token
-            self._token = await asyncio.to_thread(self._refresh_token)
-            return self._token
+            token, expiry = await self._fetch_token()
+            self._token, self._expiry = token, expiry
+            return token
 
     # -- sending ---------------------------------------------------------
 
@@ -121,6 +156,7 @@ class FcmPushSender:
             access = await self._access_token()
         except Exception as exc:  # noqa: BLE001 - surfaced as a log line
             self._token = None
+            self._expiry = 0.0
             return PushResult(ok=False, error=f"auth: {_short(exc)}")
 
         body = {
@@ -144,6 +180,7 @@ class FcmPushSender:
         if response.status_code == 401:
             # Stale OAuth token: refresh on the next attempt.
             self._token = None
+            self._expiry = 0.0
         if _unregistered(response):
             return PushResult(ok=False, unregistered=True, error="UNREGISTERED")
         text = response.text or ""

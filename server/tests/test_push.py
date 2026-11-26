@@ -105,7 +105,7 @@ async def test_press_is_pushed_when_app_is_offline(server_factory) -> None:  # t
         assert data["v"] == "1"
         assert data["t"] == "press"
         assert data["seq"] == "5"
-        assert data["from"] == DEVICE_ID
+        assert data["device_id"] == DEVICE_ID
         assert int(data["t_epoch"]) > 0
 
         # No error(no_peer): the server treats the call as delivered to FCM.
@@ -213,7 +213,11 @@ def credentials(tmp_path: Path) -> Path:
 
 def _sender(credentials: Path, handler) -> FcmPushSender:  # type: ignore[no-untyped-def]
     sender = FcmPushSender(credentials, transport=httpx.MockTransport(handler))
-    sender._refresh_token = lambda: "access-token"  # type: ignore[method-assign]
+
+    async def fake_access_token() -> str:
+        return "access-token"
+
+    sender._access_token = fake_access_token  # type: ignore[method-assign]
     return sender
 
 

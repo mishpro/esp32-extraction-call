@@ -231,7 +231,15 @@ class Router:
     ) -> None:
         assert self.push is not None
         seq = forwarded.get("seq")
-        data = {key: str(value) for key, value in forwarded.items()}
+        # FCM reserves some data keys (`from` among them), so the sender travels
+        # as `device_id`; the app maps it back to `Press.from`.
+        data = {
+            "v": str(forwarded["v"]),
+            "t": "press",
+            "seq": str(forwarded["seq"]),
+            "t_epoch": str(forwarded["t_epoch"]),
+            "device_id": str(forwarded.get("from") or ""),
+        }
         try:
             result = await self.push.send(token, data)
         except Exception as exc:  # noqa: BLE001 - push must never break press
