@@ -56,6 +56,8 @@ uvicorn закрыл бы соединение своим кодом раньш�
 | `PONG_TIMEOUT_S` | `10` | ожидание `pong` после ping |
 | `MAX_PING_MISSES` | `3` | пропусков подряд до закрытия |
 | `MAX_FRAME_BYTES` | `4096` | лимит кадра (§1) |
+| `FCM_CREDENTIALS` | — | путь к service-account JSON; без него push выключен (§4.10) |
+| `FCM_PROJECT_ID` | из JSON | переопределить `project_id` для FCM HTTP v1 |
 | `LOG_LEVEL` | `INFO` | уровень JSON-логов |
 
 Токен **никогда** не передаётся в URL (сервер его оттуда и не читает) и не
@@ -116,6 +118,19 @@ cd server && uv run python ../tools/fake_device.py --url ws://127.0.0.1:8001/ws 
 cd server && uv run python ../tools/fake_device.py --url ws://127.0.0.1:8001/ws \
     --role app --id deadbeef --auto-ack
 ```
+
+## FCM (S6, протокол v1.1 §4.10)
+
+`FCM_CREDENTIALS` указывает на service-account JSON. Пока переменная не задана,
+сервер работает как раньше: `press` идёт только по WebSocket.
+
+При зарегистрированном токене (`register_push`) каждый `press` дополнительно
+уходит data-сообщением с `priority=high` — даже когда приложение онлайн, чтобы
+не потерять вызов. Доставка «как минимум один раз», приложение дедуплицирует по
+`(from, seq, t_epoch)`. Ошибка FCM не влияет на `ack(server)` и не отменяет
+`ack(delivered)`: «доставлено» по-прежнему означает «приложение подтвердило по
+WebSocket». Токен лежит в `state.json` и никогда не пишется в лог; ответ FCM
+`UNREGISTERED` удаляет регистрацию.
 
 ## Тесты
 

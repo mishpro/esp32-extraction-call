@@ -2,13 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nightcall.local/schema/messages.schema.json",
   "title": "Nightcall WS protocol v1",
-  "description": "Машиночитаемая выжимка из drafts/Протокол.md v1.0. Источник правды — сам документ; при расхождении правится Протокол.md, сюда переносится следом.",
+  "description": "Машиночитаемая выжимка из drafts/Протокол.md v1.1. Источник правды — сам документ; при расхождении правится Протокол.md, сюда переносится следом.",
   "oneOf": [
     { "$ref": "#/$defs/hello" },
     { "$ref": "#/$defs/hello_ok" },
     { "$ref": "#/$defs/press" },
     { "$ref": "#/$defs/timer" },
     { "$ref": "#/$defs/cancel" },
+    { "$ref": "#/$defs/register_push" },
     { "$ref": "#/$defs/ack" },
     { "$ref": "#/$defs/status" },
     { "$ref": "#/$defs/ping" },
@@ -92,6 +93,23 @@
         "v": { "$ref": "#/$defs/v" },
         "t": { "const": "cancel" },
         "seq": { "$ref": "#/$defs/seq" },
+        "t_epoch": { "$ref": "#/$defs/t_epoch" }
+      }
+    },
+    "register_push": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "t", "token", "t_epoch"],
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "t": { "const": "register_push" },
+        "token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^\\S+$",
+          "description": "FCM registration token; идемпотентно, без seq и ack"
+        },
         "t_epoch": { "$ref": "#/$defs/t_epoch" }
       }
     },
