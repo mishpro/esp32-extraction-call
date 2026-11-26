@@ -77,14 +77,33 @@ app/
 - при заблокированном экране (`mWakefulness=Dozing`) 8 нажатий реальной кнопки: `press seq 2…9`, каждое подтверждено `ack(delivered)`, push-уведомления видны (Android сгруппировал в `signals`);
 - на кнопке — `WAIT ETA`.
 
-Тестов на JVM: **52** (Protocol 18, Backoff 9, WsClient 2, SignalReducer 16, TimeFormat 7). MVP S0–S3 замкнут. Дальше S4 (timer/cancel) и S6 (FCM).
+Тестов на JVM: **66** (Protocol 18, Backoff 9, WsClient 2, SignalReducer 28, TimeFormat 9). MVP S0–S3 и S4 (таймер) замкнуты. Дальше S6 (FCM), S5 (BLE), S7 (питание), S8 (стоп-кнопка).
+
+## Реализация S4 (2026-11-26)
+
+| Компонент | Как сделано |
+|---|---|
+| Команды | process-wide `CommandBus` (`SharedFlow<Command>`): activity → сервис; интенты не используются, чтобы не понижать `START_REDELIVER_INTENT` |
+| `timer` | пресеты 15/30/60 мин + поле минут (1…1440) → `timer(seq, duration_s, t_epoch)`; `t_epoch` — серверная шкала |
+| Ожидание ack | `CommandPhase.PENDING` → `ack(delivered)` в течение 10 с; иначе `FAILED` с текстом «Button did not answer — time not set.» и повтор с новым `seq` |
+| `cancel` | кнопка «Cancel timer» активна в `COUNTDOWN`/`ARRIVED`; тот же 10-секундный watchdog |
+| `seq` команд | начинается с `1_000_000`, чтобы `ack(delivered)` нажатия не завершал команду (оба приходят в приложение) |
+| Отсчёт | `status.remaining_s` переводится в локальный дедлайн; UI тикает раз в секунду, на нуле — «Time is up.» |
+| `ARRIVED` | сервер присылает `status` ровно в `deadline_t` (кнопка сама об этом не сообщает) |
+
+**Проверено на эмуляторе API 36 + реальной плате (fw `0.2.0-s4`):**
+
+- 15 мин → `COUNTDOWN`, «Remaining 00:14:58»; `cancel` → `ARMED`;
+- 1 мин → `timer_arrived` ровно в дедлайн → `ARRIVED`, «Time is up.»;
+- 2 мин → перезагрузка платы через `mpremote` → `timer: restored COUNTDOWN`, сервер восстановил `COUNTDOWN`, приложение продолжило отсчёт с того же дедлайна;
+- `ack(delivered)` от кнопки приходит за 30–90 мс.
 
 ## UI MVP
 
 - Статус соединения с сервером (`WS: connected / reconnecting`).
 - Статус кнопки: `online/offline`, её `state`.
 - Список последних нажатий: метка времени от сервера (`press.t_epoch`) и от кнопки (если есть) + расхождение часов.
-- (S4) Поле ввода времени → `timer(seq, duration_s, t_epoch)`, ожидание `ack(stage=delivered)` 10 с, иначе «Кнопка не отвечает, время не установлено» (§4.6).
+- Пресеты 15/30/60 мин и поле минут → `timer(seq, duration_s, t_epoch)`; ожидание `ack(stage=delivered)` 10 с, иначе «Button did not answer — time not set.»; «Cancel timer» в `COUNTDOWN`/`ARRIVED` (§4.6).
 
 ## Сеть
 

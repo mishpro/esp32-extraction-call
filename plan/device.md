@@ -15,6 +15,7 @@ device/
   display.py     # SSD1306 + один экран со статус-баром
   button.py      # BTN1: pull-up, debounce 30–50 мс
   state.py       # состояния и переходы
+  store.py       # дедлайн таймера в NVS (esp32.NVS), переживает перезагрузку
   lib/ssd1306.py # вендоренный драйвер из micropython-lib (MIT)
 ```
 
@@ -40,7 +41,7 @@ device/
 | `frames.py` | готово: 61 тест |
 | `proto.py` | готово: 107 тестов + сверка со схемой |
 | `ws_client.py` | готово: handshake §7.1, poll-чтение §7.3, backoff §6; 15 тестов, включая TCP-раундтрип |
-| `button.py`, `display.py`, `state.py`, `net.py`, `main.py` | ждут плату (WiFi-доступы + экран) |
+| `button.py`, `display.py`, `state.py`, `store.py`, `net.py`, `main.py` | готово: S2 закрыт на реальной плате, S4 (таймер) проверен на ней же |
 
 `ws_client.py` проверен **тем же файлом** на CPython против реального сервера: `connect()` → `hello` → `press` → `ack(server)` → `ack(delivered)`, HTTP-ответ разобран до первого кадра. Импорты (`socket`, `select`, `hashlib`, `binascii`, `os`, `random`, `time`) есть и в MicroPython, и в CPython.
 
@@ -59,7 +60,8 @@ API: `read_event(timeout_ms)` → `(KIND_MESSAGE|KIND_PING|KIND_PONG|KIND_CLOSE,
 | `WAIT ETA` | пришёл `ack(stage=delivered)` | `STATE: WAIT ETA` |
 | `NO APP` | в `status`/`hello_ok` нет живого приложения | `STATE: NO APP` |
 | `AUTH FAIL` | close 4401 / `error(auth_failed)` | `STATE: AUTH FAIL` |
-| `COUNTDOWN`/`ARRIVED` | S4 (в MVP не активны) | — |
+| `COUNTDOWN` | пришёл `timer(deadline_t)`; нажатие игнорируется | `STATE: COUNTDOWN` + `LEFT HH:MM:SS` |
+| `ARRIVED` | `deadline_t` прошёл; нажатие разрешено (новый вызов) | `STATE: ARRIVED` |
 
 ## Экран — один экран со статус-баром
 
@@ -69,22 +71,25 @@ API: `read_event(timeout_ms)` → `(KIND_MESSAGE|KIND_PING|KIND_PONG|KIND_CLOSE,
 ```
 y=0   WS:OK APP:ON
 y=10  TIME 10:42:56
-y=20  STATE: ARMED       (или NO APP / AUTH FAIL)
-y=30  LAST 10:41:02
+y=20  STATE: ARMED       (или NO APP / AUTH FAIL / COUNTDOWN / ARRIVED)
+y=30  LAST 10:41:02      (в COUNTDOWN — LEFT 02:59:58)
 y=40  SEQ 7
 ```
 
 - Статус-бар: `WS:OK|ERR` (соединение с сервером), `APP:ON|OFF` (`status.app.online`).
 - `TIME` — время сервера с поправкой `utc_offset_h` из `config.py` (МСК = 3).
 - `STATE` — текущее состояние; `NO APP` и `AUTH FAIL` — уведомления поверх него.
-- `LAST` — метка последнего нажатия/подтверждения; `SEQ` — номер нажатия.
+- `LAST` — метка последнего нажатия/подтверждения; в `COUNTDOWN` эта строка
+  показывает `LEFT HH:MM:SS` (пересчёт раз в секунду); `SEQ` — номер нажатия.
+- `COUNTDOWN` — ровно 16 символов, влезает без обрезки; отсчёт считается по
+  `deadline_t` из NVS, поэтому переживает и потерю WiFi, и перезагрузку платы.
 - Время не читается из RTC платы (там эпоха 2000-01-01): `Clock` хранит `t_epoch`
   сервера и считает от `ticks_ms`.
 - Обновление: при любом входящем сообщении + раз в секунду для часов.
 
 ## Время
 
-NTP не нужен. Смещение считается из `t_epoch` в `hello_ok`/`status`/`press`: `off = t_epoch − device_now`; таймер (S4) считается по `deadline_t` из сервера: `remaining = deadline_t − (device_now + off)`. `ntptime` — опциональный fallback, в MVP не используем.
+NTP не нужен. Смещение считается из `t_epoch` в `hello_ok`/`status`/`ping`: `off = t_epoch − device_now`; таймер считается по `deadline_t` из сервера: `remaining = deadline_t − (device_now + off)`. Дедлайн хранится в NVS (`store.py`) и восстанавливается после первой синхронизации часов; если он уже прошёл — сразу `ARRIVED`. `ntptime` — опциональный fallback, не используем.
 
 ## Переподключение (§6)
 
@@ -93,10 +98,12 @@ Backoff `min(60, 2^attempt) ± 20 %`, сброс счётчика при `hello_
 ## Заливка на плату
 
 ```bash
-.venv-tools/bin/mpremote connect /dev/ttyUSB0 fs cp device/main.py :main.py
+for f in frames.py proto.py ws_client.py button.py display.py state.py store.py net.py main.py; do
+  .venv-tools/bin/mpremote connect /dev/ttyUSB0 fs cp device/$f :$f
+done
 .venv-tools/bin/mpremote connect /dev/ttyUSB0 fs cp device/config.py :config.py   # локально, не из git
 .venv-tools/bin/mpremote connect /dev/ttyUSB0 fs ls
-.venv-tools/bin/mpremote connect /dev/ttyUSB0 run main.py
+.venv-tools/bin/mpremote connect /dev/ttyUSB0 reset
 ```
 
 `config.py` генерируется локально: `ssid`, `psk`, `server_host`, `server_port`, `token`, `device_id`, `utc_offset_h` (часовой пояс экранного времени; МСК = 3). Шаблон — `device/config.example.py`.

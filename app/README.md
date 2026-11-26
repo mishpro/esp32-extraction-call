@@ -112,6 +112,11 @@ adb shell am start -n io.guidecaller.app/.ui.MainActivity
 На эмуляторе проверено: connected, уведомление при нажатии в фоне и с погашенным
 экраном, `ack(delivered)`, Disconnect, повторный `seq=1` после «перезагрузки» кнопки.
 
+**S4 (таймер), эмулятор API 36 + реальная плата:** 15 мин → `COUNTDOWN` и
+«Remaining 00:14:58», `cancel` → `ARMED`; 1 мин → `timer_arrived` ровно в дедлайн,
+`ARRIVED` и «Time is up.»; перезагрузка платы посреди 2-минутного отсчёта →
+`timer: restored COUNTDOWN` и тот же дедлайн. `ack(delivered)` на `timer` — 30–90 мс.
+
 **CMF Phone 1 (`A015`, Android 16, API 36):** установлено через `adb`, `app_id 07d4a347`,
 `POST_NOTIFICATIONS` выдан, Doze-whitelist:
 
