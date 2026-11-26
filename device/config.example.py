@@ -16,6 +16,9 @@ psk = "YOUR_PASSWORD"
 server_host = "192.168.1.71"
 server_port = 8000
 
+# Часовой пояс для времени на экране (МСК = 3, UTC = 0).
+utc_offset_h = 3
+
 # §4.1 требует непустой token даже при AUTH_REQUIRED=false:
 # пустая строка -> error(bad_request) + close 4400.
 token = "dev-token"

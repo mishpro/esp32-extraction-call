@@ -235,7 +235,7 @@ def close_reason(payload):
 class Fragments:
     """Reassembles fragmented data frames; one instance per connection.
 
-    The buffer is reused between messages (`del buf[:]`) so steady-state
+    The buffer is reused between messages (``buf[:] = b""``) so steady-state
     traffic does not allocate a new bytearray per frame (Протокол §7.4).
     """
 
@@ -248,7 +248,9 @@ class Fragments:
 
     def reset(self):
         self.opcode = None
-        del self.buf[:]
+        # MicroPython bytearray has no item deletion (`del buf[:]` raises);
+        # slice assignment with a shorter value does resize in place.
+        self.buf[:] = b""
 
     def feed(self, frame):
         """Consume a parsed frame; return (kind, opcode, payload) or None.

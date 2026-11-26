@@ -58,7 +58,7 @@
 
 **S2 закрыт, когда:** реальная плата шлёт `press`, получает `ack`, экран показывает `SENT`/`WAIT ETA`, статус-бар отражает живость WS и приложения.
 
-**Прогресс (2026-11-26):** 2.1–2.3 готовы и проверены на CPython (`frames.py`, `proto.py`, `ws_client.py`; 206 тестов; `ws_client` прошёл полный путь `hello → press → ack(delivered)` против реального сервера). 2.4–2.8 блокированы: экран не отвечает по I²C, нет WiFi-доступов.
+**Прогресс (2026-11-26): S2 закрыт.** `frames.py`, `proto.py`, `ws_client.py`, `button.py`, `display.py`, `state.py`, `net.py`, `main.py` — 232 теста на CPython. На реальной плате: WiFi 2.4 ГГц, handshake, `hello_ok`, `press → ack(server) → ack(delivered)`, экран 128×64 показывает `WAIT ETA`, `pong` держит сессию. Грабли uV 1.29 — в `hardware-probe.md`.
 
 ---
 
@@ -77,7 +77,7 @@
 
 **S3 закрыт, когда:** нажатие кнопки → уведомление на телефоне, приложение шлёт `ack(delivered)`, кнопка показывает `WAIT ETA`.
 
-**Прогресс (2026-11-26):** 3.1–3.4 готовы: `assembleDebug` и 29 JVM-тестов (Protocol 18, Backoff 9, WsClient 2 через MockWebServer: `hello` первым кадром, `pong` на `ping`, `hello_ok` → Connected). Отклонения: AGP 9.6.0-alpha06 (стабильного 9.6.0 нет), `compileSdk 37.2` (требование OkHttp 5.5.1/Compose), `targetSdk` остался 36. 3.5–3.8 ждут телефон/эмулятор.
+**Прогресс (2026-11-26):** 3.1–3.4 готовы: `assembleDebug` и 29 JVM-тестов (Protocol 18, Backoff 9, WsClient 2 через MockWebServer: `hello` первым кадром, `pong` на `ping`, `hello_ok` → Connected). Отклонения: AGP 9.6.0-alpha06 (стабильного 9.6.0 нет), `compileSdk 37.2` (требование OkHttp 5.5.1/Compose), `targetSdk` остался 36. 3.5–3.7 в работе: `SignalService` (`specialUse`), каналы `signals`/`status`, уведомление + `ack(delivered)`, экран статуса и списка. Проверка — эмулятор API 36 + KVM, затем CMF Phone (1).
 
 ---
 

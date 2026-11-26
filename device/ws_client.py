@@ -46,6 +46,16 @@ WS_GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 RECV_CHUNK = 512
 MAX_TEXT_BYTES = frames.MAX_MESSAGE_BYTES
 
+try:
+    ticks_ms = time.ticks_ms
+    ticks_diff = time.ticks_diff
+except AttributeError:  # CPython
+    def ticks_ms():
+        return int(time.monotonic() * 1000)
+
+    def ticks_diff(a, b):
+        return a - b
+
 # lwIP on the ESP32 raises EAGAIN as 11; the others are CPython/macOS/Windows.
 try:
     from errno import EAGAIN
@@ -165,9 +175,9 @@ class WsClient:
         try:
             sock.sendall(request.encode("utf-8"))
             raw = b""
-            deadline = time.monotonic() + self.timeout
+            deadline = ticks_ms() + int(self.timeout * 1000)
             while b"\r\n\r\n" not in raw:
-                if time.monotonic() > deadline:
+                if ticks_diff(ticks_ms(), deadline) > 0:
                     raise WsError("handshake timeout")
                 chunk = sock.recv(RECV_CHUNK)
                 if not chunk:
@@ -209,7 +219,7 @@ class WsClient:
             except OSError:
                 pass
             self.sock = None
-        del self.buf[:]
+        self.buf[:] = b""
         self.frags.reset()
 
     # -- sending ---------------------------------------------------------
@@ -257,7 +267,10 @@ class WsClient:
                 raise WsError("bad frame: " + str(exc))
             if parsed is None:
                 return None
-            del self.buf[:parsed[3]]
+            consumed = parsed[3]
+            # MicroPython has no `del bytearray[:n]`; a self-slice assignment
+            # resizes the same buffer without allocating a new object.
+            self.buf[:] = self.buf[consumed:]
             try:
                 event = frames.feed(self.frags, parsed)
             except ValueError as exc:
@@ -280,17 +293,17 @@ class WsClient:
         button/display/ping timers in the same loop. ``timeout_ms=0`` only
         drains frames that are already buffered.
         """
-        deadline = time.monotonic() + timeout_ms / 1000.0
+        deadline = ticks_ms() + timeout_ms
         while True:
             event = self._next_event()
             if event is not None:
                 return event
-            remaining = deadline - time.monotonic()
+            remaining = ticks_diff(deadline, ticks_ms())
             if remaining <= 0:
                 return None
             poller = select.poll()
             poller.register(self.sock, select.POLLIN)
-            if not poller.poll(int(remaining * 1000) + 1):
+            if not poller.poll(remaining + 1):
                 continue
             try:
                 chunk = self.sock.recv(RECV_CHUNK)

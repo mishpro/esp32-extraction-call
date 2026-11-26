@@ -1,3 +1,11 @@
 # Vendored third-party code is copied as-is and not linted.
 # server/ has its own pyproject.toml with a separate ruff config.
+
 extend-exclude = ["device/lib"]
+line-length = 100
+
+[lint]
+# Same set as server/pyproject.toml; the ambient ruff default here is much wider.
+select = ["E", "F", "I", "UP", "B"]
+# MicroPython builds have no exception chaining; a plain raise is intentional.
+ignore = ["B904"]

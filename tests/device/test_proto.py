@@ -186,7 +186,10 @@ def test_build_pong_rejects_float_epoch():
         proto.build_pong(1793001600.0)
 
 
-@pytest.mark.parametrize("ok,stage", [(1, "server"), (True, "client"), (True, None), ("yes", "server")])
+@pytest.mark.parametrize(
+    "ok,stage",
+    [(1, "server"), (True, "client"), (True, None), ("yes", "server")],
+)
 def test_build_ack_rejects_bad_args(ok, stage):
     with pytest.raises(ValueError):
         proto.build_ack(1, ok, stage)
@@ -335,7 +338,11 @@ def test_parse_rejects_bad_peer(peer):
         {"t_epoch": 1, "device": {"online": True}, "app": {"online": True}},
         {"t_epoch": 1, "device": {"online": True, "state": "ARMED"}},
         {"t_epoch": 1, "device": {"online": True, "state": "ARMED"}, "app": {}},
-        {"t_epoch": 1, "device": {"online": True, "state": "ARMED", "fw": 1}, "app": {"online": True}},
+        {
+            "t_epoch": 1,
+            "device": {"online": True, "state": "ARMED", "fw": 1},
+            "app": {"online": True},
+        },
         {"t_epoch": "1", "device": {"online": True, "state": "ARMED"}, "app": {"online": True}},
     ],
 )
