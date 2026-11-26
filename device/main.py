@@ -9,11 +9,12 @@ import machine
 import net
 import proto
 import state as state_mod
+import store
 import ws_client
 from button import Button
 from display import Display
 
-FW_VERSION = "0.1.0-mvp"
+FW_VERSION = "0.2.0-s4"
 LOOP_MS = 50
 PING_MS = 20000
 GC_MS = 60000
@@ -35,6 +36,9 @@ def main():
 
     sm = state_mod.StateMachine()
     clock = state_mod.Clock(getattr(config, "utc_offset_h", 0))
+    timer_store = store.TimerStore()
+    # Loaded once at boot; applied after the first server clock sync.
+    saved_deadline = timer_store.load()
 
     wlan = None
     client = None
@@ -46,6 +50,8 @@ def main():
 
     def draw(ws_ok):
         now = time.ticks_ms()
+        server_now = clock.now(now)
+        left = sm.remaining(server_now)
         display.render(
             {
                 "ws": ws_ok,
@@ -55,8 +61,24 @@ def main():
                 "last": clock.hms_of(sm.last_epoch),
                 "seq": sm.seq,
                 "notice": sm.notice,
+                "left": state_mod.fmt_left(left) if left is not None else None,
             }
         )
+
+    def restore_timer():
+        """Apply the deadline loaded from NVS once the server clock is known."""
+        nonlocal saved_deadline
+        if saved_deadline is None:
+            return
+        server_now = clock.now(time.ticks_ms())
+        if server_now is None:
+            return
+        applied = sm.restore(saved_deadline, server_now)
+        saved_deadline = None
+        if applied:
+            if sm.state == state_mod.ARRIVED:
+                timer_store.clear()
+            log("timer: restored " + sm.state)
 
     def reconnect(reason):
         nonlocal client, attempt, hello_done
@@ -96,11 +118,15 @@ def main():
 
     while True:
         now = time.ticks_ms()
+        dirty = False
         level = button.pin.value()
         if level != last_level:
             log(f"btn level {level}")
             last_level = level
-        sm.tick(now)
+        if sm.tick(now, clock.now(now)):
+            timer_store.clear()
+            log("timer: ARRIVED")
+            dirty = True
 
         # -- WiFi ---------------------------------------------------------
         if wlan is None or not wlan.isconnected():
@@ -164,7 +190,9 @@ def main():
             continue
 
         now = time.ticks_ms()
-        dirty = False
+
+        # First server clock of this boot: resume a countdown from NVS (§4.4).
+        restore_timer()
 
         if event is not None:
             kind, _opcode, payload = event
@@ -206,6 +234,38 @@ def main():
                             sm.last_epoch = clock.now(now)
                         dirty = True
                         log(f"ack seq={seq} stage={stage} ok={ok}")
+                    elif mtype == "timer":
+                        # §4.4: the server converts duration_s into deadline_t.
+                        seq = msg["seq"]
+                        deadline = msg.get("deadline_t")
+                        if deadline is None:
+                            log("timer: missing deadline_t, ignored")
+                        else:
+                            sm.on_timer(deadline)
+                            timer_store.save(deadline)
+                            try:
+                                client.send_text(
+                                    proto.build_ack(seq, True, "delivered")
+                                )
+                            except ws_client.WsClosed as exc:
+                                reconnect(f"timer ack: {exc}")
+                                continue
+                            log(f"timer seq={seq} deadline={deadline}")
+                            dirty = True
+                    elif mtype == "cancel":
+                        # §4.5: stop the countdown and go back to ARMED.
+                        seq = msg["seq"]
+                        sm.on_cancel()
+                        timer_store.clear()
+                        try:
+                            client.send_text(
+                                proto.build_ack(seq, True, "delivered")
+                            )
+                        except ws_client.WsClosed as exc:
+                            reconnect(f"cancel ack: {exc}")
+                            continue
+                        log(f"cancel seq={seq}")
+                        dirty = True
                     elif mtype == "error":
                         code = msg["code"]
                         text = msg["msg"]
@@ -232,6 +292,8 @@ def main():
                 log(f"press ignored in {sm.state}")
             else:
                 sm.last_epoch = clock.now(now)
+                # A new call drops the finished countdown from NVS too.
+                timer_store.clear()
                 t_epoch = sm.last_epoch if sm.last_epoch is not None else 0
                 try:
                     client.send_text(proto.build_press(seq, t_epoch))

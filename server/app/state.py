@@ -1,4 +1,5 @@
-"""Persistence of ``last_press`` / ``last_status`` / seq watermarks (Протокол §8).
+"""Persistence of ``last_press`` / ``last_timer`` / ``last_status`` / seq watermarks
+(Протокол §8).
 
 A single JSON file is rewritten atomically (write to ``*.tmp``, fsync, rename).
 The file lives outside the repository by default (``server/.state/state.json``,
@@ -20,6 +21,7 @@ from .models import Role
 _EMPTY: dict[str, Any] = {
     "version": 1,
     "last_press": None,
+    "last_timer": None,
     "last_status": None,
     "last_seq": {},
 }
@@ -52,6 +54,7 @@ class StateStore:
         self._data = {
             "version": 1,
             "last_press": data.get("last_press"),
+            "last_timer": data.get("last_timer"),
             "last_status": data.get("last_status"),
             "last_seq": dict(last_seq) if isinstance(last_seq, dict) else {},
         }
@@ -67,6 +70,12 @@ class StateStore:
     @property
     def last_status(self) -> dict[str, Any] | None:
         value = self._data.get("last_status")
+        return copy.deepcopy(value) if isinstance(value, dict) else None
+
+    @property
+    def last_timer(self) -> dict[str, Any] | None:
+        """The last ``timer`` forwarded to the button (§8), if still relevant."""
+        value = self._data.get("last_timer")
         return copy.deepcopy(value) if isinstance(value, dict) else None
 
     def snapshot(self) -> dict[str, Any]:
@@ -88,6 +97,11 @@ class StateStore:
 
     def record_press(self, frame: dict[str, Any]) -> None:
         self._data["last_press"] = copy.deepcopy(frame)
+        self._save()
+
+    def record_timer(self, frame: dict[str, Any] | None) -> None:
+        """Remember the forwarded ``timer``; ``None`` clears it (cancel/arrival)."""
+        self._data["last_timer"] = copy.deepcopy(frame)
         self._save()
 
     def record_status(self, frame: dict[str, Any]) -> None:

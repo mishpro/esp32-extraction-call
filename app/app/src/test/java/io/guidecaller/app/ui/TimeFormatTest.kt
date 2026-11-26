@@ -51,4 +51,18 @@ class TimeFormatTest {
             TimeFormat.hhmmss(1_700_000_000L),
         )
     }
+
+    @Test
+    fun `duration renders as hours minutes seconds`() {
+        assertEquals("00:00:00", TimeFormat.duration(0L))
+        assertEquals("00:00:59", TimeFormat.duration(59L))
+        assertEquals("00:15:00", TimeFormat.duration(900L))
+        assertEquals("02:59:58", TimeFormat.duration(10_798L))
+        assertEquals("24:00:00", TimeFormat.duration(86_400L))
+    }
+
+    @Test
+    fun `negative duration is clamped to zero`() {
+        assertEquals("00:00:00", TimeFormat.duration(-5L))
+    }
 }

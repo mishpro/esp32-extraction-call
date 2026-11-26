@@ -1,8 +1,9 @@
 """Local button state machine and server clock (MicroPython-safe, no imports).
 
 Wire states (Протокол §4.2) are ``BOOT``, ``OFFLINE``, ``ARMED``, ``SENT``,
-``WAIT_ETA``, ``NO_ACK``. ``NO APP`` and ``AUTH FAIL`` are local display-only
-states from §4.9. The module has no imports, so it is unit-tested on CPython.
+``WAIT_ETA``, ``COUNTDOWN``, ``ARRIVED``, ``NO_ACK``. ``NO APP`` and
+``AUTH FAIL`` are local display-only states from §4.9. The module has no
+imports, so it is unit-tested on CPython.
 """
 
 BOOT = "BOOT"
@@ -10,13 +11,20 @@ OFFLINE = "OFFLINE"
 ARMED = "ARMED"
 SENT = "SENT"
 WAIT_ETA = "WAIT_ETA"
+COUNTDOWN = "COUNTDOWN"
+ARRIVED = "ARRIVED"
 NO_ACK = "NO_ACK"
 NO_APP = "NO APP"
 AUTH_FAIL = "AUTH FAIL"
 
-# A press is accepted when idle or when the previous delivery failed/arrived.
-# While SENT the button waits for ack(delivered) to avoid double presses.
-PRESSABLE = (ARMED, WAIT_ETA, NO_ACK)
+# A press is accepted when idle, when the previous delivery failed/arrived and
+# while a countdown is showing ARRIVED (a new call). COUNTDOWN and SENT are not
+# pressable: the first would restart a running timer, the second is a double press.
+PRESSABLE = (ARMED, WAIT_ETA, NO_ACK, ARRIVED)
+
+# Losing the socket must not erase a running countdown: ``deadline_t`` lives in
+# NVS and the clock keeps running locally, so the screen keeps counting.
+KEEP_ON_DISCONNECT = (AUTH_FAIL, COUNTDOWN, ARRIVED)
 
 NO_APP_MS = 5000
 TICKS_MASK = 0x3FFFFFFF  # MicroPython ticks wrap at 2^30 ms (~12 days)
@@ -27,6 +35,16 @@ def fmt_hms(epoch_sec):
     if epoch_sec is None:
         return "--:--:--"
     sec = int(epoch_sec) % 86400
+    return f"{sec // 3600:02d}:{(sec % 3600) // 60:02d}:{sec % 60:02d}"
+
+
+def fmt_left(seconds):
+    """``HH:MM:SS`` for a remaining duration (None -> ``--:--:--``, <0 -> 0)."""
+    if seconds is None:
+        return "--:--:--"
+    sec = int(seconds)
+    if sec < 0:
+        sec = 0
     return f"{sec // 3600:02d}:{(sec % 3600) // 60:02d}:{sec % 60:02d}"
 
 
@@ -81,6 +99,7 @@ class StateMachine:
         "notice_until",
         "sent_at",
         "ack_timeout_ms",
+        "deadline_t",
     )
 
     def __init__(self, ack_timeout_ms=10000):
@@ -92,15 +111,19 @@ class StateMachine:
         self.notice_until = 0
         self.sent_at = 0
         self.ack_timeout_ms = ack_timeout_ms
+        self.deadline_t = None
 
     def ws_connected(self, now_ms, app_online):
-        self.state = ARMED
+        # A countdown is owned by the device (NVS deadline), so a reconnect
+        # must not reset it to ARMED.
+        if self.state not in KEEP_ON_DISCONNECT:
+            self.state = ARMED
         self.app_online = bool(app_online)
         self.notice = None
         self.sent_at = 0
 
     def ws_lost(self):
-        if self.state != AUTH_FAIL:
+        if self.state not in KEEP_ON_DISCONNECT:
             self.state = OFFLINE
         self.app_online = False
         self.sent_at = 0
@@ -118,12 +141,54 @@ class StateMachine:
         self.state = SENT
         self.sent_at = now_ms
         self.notice = None
+        # A new call supersedes a finished countdown (ARRIVED is pressable).
+        self.deadline_t = None
         return self.seq
+
+    def on_timer(self, deadline_t):
+        """§4.4: the server set an absolute deadline on its clock."""
+        self.deadline_t = int(deadline_t)
+        self.state = COUNTDOWN
+        self.notice = None
+        self.sent_at = 0
+
+    def on_cancel(self):
+        """§4.5: the app cancelled the countdown; back to ARMED."""
+        self.deadline_t = None
+        if self.state in (COUNTDOWN, ARRIVED):
+            self.state = ARMED
+
+    def remaining(self, server_now):
+        """Seconds left, or None when no timer is set / clock not synced."""
+        if self.deadline_t is None or server_now is None:
+            return None
+        left = self.deadline_t - server_now
+        return left if left > 0 else 0
+
+    def restore(self, deadline_t, server_now):
+        """Apply a deadline loaded from NVS after boot (§4.4, §8).
+
+        Returns True when the state was set; the caller clears NVS if that
+        state is ARRIVED (the countdown finished while the board was off).
+        """
+        if deadline_t is None or server_now is None:
+            return False
+        if self.state in (COUNTDOWN, ARRIVED):
+            return False
+        self.deadline_t = int(deadline_t)
+        if self.deadline_t > server_now:
+            self.state = COUNTDOWN
+        else:
+            self.state = ARRIVED
+        return True
 
     def on_ack(self, stage, ok, now_ms):
         if stage == "server":
             return
         self.sent_at = 0
+        # A late press ack must not overwrite a countdown that already started.
+        if self.state == COUNTDOWN:
+            return
         self.state = WAIT_ETA if ok else ARMED
 
     def on_error(self, code, now_ms):
@@ -140,7 +205,13 @@ class StateMachine:
     def on_status(self, app_online):
         self.app_online = bool(app_online)
 
-    def tick(self, now_ms):
+    def tick(self, now_ms, server_now=None):
+        """Expire notices/timeouts and move COUNTDOWN -> ARRIVED.
+
+        Returns True when the countdown has just arrived (the caller clears
+        the stored deadline). ``server_now`` is optional so tests can tick the
+        machine without a clock.
+        """
         if self.notice is not None and ((now_ms - self.notice_until) & TICKS_MASK) < 0x20000000:
             self.notice = None
         if self.state == SENT and self.sent_at:
@@ -148,3 +219,12 @@ class StateMachine:
             if elapsed >= self.ack_timeout_ms:
                 self.state = NO_ACK
                 self.sent_at = 0
+        if (
+            self.state == COUNTDOWN
+            and self.deadline_t is not None
+            and server_now is not None
+            and server_now >= self.deadline_t
+        ):
+            self.state = ARRIVED
+            return True
+        return False

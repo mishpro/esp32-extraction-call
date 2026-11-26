@@ -25,9 +25,8 @@ def screen_lines(model):
     """Build the five text lines for a state model (each <= 16 chars)."""
     ws = "OK" if model.get("ws") else "ERR"
     app = "ON" if model.get("app") else "OFF"
-    state = model.get("state", "BOOT")
-    if state == "WAIT_ETA":
-        state = "WAIT ETA"
+    raw_state = model.get("state", "BOOT")
+    state = "WAIT ETA" if raw_state == "WAIT_ETA" else raw_state
     time_text = model.get("time", "--:--:--")
     last_text = model.get("last", "--:--:--")
     seq = model.get("seq", 0)
@@ -38,6 +37,11 @@ def screen_lines(model):
         f"LAST {last_text}",
         f"SEQ {seq}",
     ]
+    # S4: while the countdown runs the fourth row is the time left instead of
+    # the last press; ARRIVED keeps STATE: ARRIVED as the only signal.
+    left = model.get("left")
+    if raw_state == "COUNTDOWN" and left:
+        lines[3] = f"LEFT {left}"
     notice = model.get("notice")
     if notice:
         lines[2] = notice

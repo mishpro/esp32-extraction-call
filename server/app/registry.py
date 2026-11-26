@@ -88,11 +88,22 @@ class DeviceSession(BaseSession):
 
     state: ButtonState = ButtonState.ARMED
     presses_received: int = 0
+    # Absolute epoch of the running countdown (§4.4); None when no timer is set.
+    deadline_t: int | None = None
+
+    def remaining_s(self) -> int:
+        """Seconds left on the countdown in the server clock (§4.4)."""
+        if self.deadline_t is None:
+            return 0
+        return max(0, self.deadline_t - now_epoch())
 
 
 @dataclass(eq=False)
 class AppSession(BaseSession):
     role: ClassVar[Role] = Role.APP
+
+    # Highest `seq` of a `timer`/`cancel` relayed in this session (§4.6/NFR-15).
+    last_command_seq: int = 0
 
 
 class Registry:
@@ -162,7 +173,7 @@ class Registry:
             "session": device.session_id,
             "online": True,
             "state": device.state.value,
-            "remaining_s": 0,
+            "remaining_s": device.remaining_s(),
             "last_seen": device.last_seen,
         }
         if device.fw is not None:

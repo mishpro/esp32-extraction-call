@@ -1,5 +1,7 @@
 package io.guidecaller.app.service
 
+import io.guidecaller.app.net.Ack
+import io.guidecaller.app.net.AckStage
 import io.guidecaller.app.net.AppStatus
 import io.guidecaller.app.net.ButtonState
 import io.guidecaller.app.net.DeviceStatus
@@ -179,8 +181,143 @@ class SignalReducerTest {
     fun otherErrorsDoNotChangeState() {
         val original = SignalState(deviceState = "ARMED")
 
-        assertSameState(original, SignalReducer.applyError(original, error(ErrorCode.BAD_DURATION)))
         assertSameState(original, SignalReducer.applyError(original, error(ErrorCode.DUPLICATE)))
+        assertSameState(original, SignalReducer.applyError(original, error(ErrorCode.INTERNAL)))
+    }
+
+    // --- S4: countdown and command delivery --------------------------------
+
+    @Test
+    fun statusCountdownConvertsRemainingToALocalDeadline() {
+        val state = SignalReducer.applyStatus(
+            SignalState(),
+            status(
+                tEpoch = 1_000,
+                deviceOnline = true,
+                state = ButtonState.COUNTDOWN,
+                appOnline = true,
+                remainingSeconds = 120,
+            ),
+            nowEpochSec = 1_000,
+        )
+
+        assertEquals(1_120L, state.countdownEndsAtLocalEpochSec)
+        assertTrue(state.countdownActive)
+    }
+
+    @Test
+    fun statusArmedClearsTheCountdown() {
+        val running = SignalState(
+            deviceOnline = true,
+            deviceState = "COUNTDOWN",
+            countdownEndsAtLocalEpochSec = 1_120,
+        )
+        val state = SignalReducer.applyStatus(
+            running,
+            status(tEpoch = 1_010, deviceOnline = true, state = ButtonState.ARMED, appOnline = true),
+            nowEpochSec = 1_010,
+        )
+
+        assertNull(state.countdownEndsAtLocalEpochSec)
+        assertFalse(state.countdownActive)
+    }
+
+    @Test
+    fun arrivedMeansZeroTimeLeft() {
+        val state = SignalReducer.applyStatus(
+            SignalState(),
+            status(tEpoch = 2_000, deviceOnline = true, state = ButtonState.ARRIVED, appOnline = true),
+            nowEpochSec = 2_000,
+        )
+
+        assertEquals(2_000L, state.countdownEndsAtLocalEpochSec)
+        assertTrue(state.countdownActive)
+    }
+
+    @Test
+    fun helloOkRestoresACountdownAfterAppRestart() {
+        val state = SignalReducer.applyHelloOk(
+            SignalState(),
+            helloOk(
+                tEpoch = 5_000,
+                online = true,
+                state = ButtonState.COUNTDOWN,
+                remainingSeconds = 600,
+            ),
+            nowEpochSec = 5_000,
+        )
+
+        assertEquals(5_600L, state.countdownEndsAtLocalEpochSec)
+    }
+
+    @Test
+    fun sendingATimerWaitsForConfirmation() {
+        val state = SignalReducer.commandSending(SignalState(), seq = 1_000_001, kind = CommandKind.TIMER)
+
+        assertEquals(CommandPhase.PENDING, state.command.phase)
+        assertEquals(CommandKind.TIMER, state.command.kind)
+        assertEquals(1_000_001L, state.command.seq)
+    }
+
+    @Test
+    fun matchingDeliveredAckClearsThePendingCommand() {
+        val pending = SignalReducer.commandSending(SignalState(), seq = 7, kind = CommandKind.TIMER)
+        val state = SignalReducer.applyCommandAck(pending, ack(seq = 7))
+
+        assertEquals(CommandPhase.IDLE, state.command.phase)
+        assertNull(state.command.error)
+    }
+
+    @Test
+    fun pressEchoAckDoesNotCompleteAPendingCommand() {
+        val pending = SignalReducer.commandSending(SignalState(), seq = 1_000_001, kind = CommandKind.TIMER)
+        // Press acks reach the app too and carry the device seq, not ours.
+        val state = SignalReducer.applyCommandAck(pending, ack(seq = 9))
+
+        assertEquals(CommandPhase.PENDING, state.command.phase)
+    }
+
+    @Test
+    fun rejectedAckFailsTheCommand() {
+        val pending = SignalReducer.commandSending(SignalState(), seq = 7, kind = CommandKind.CANCEL)
+        val state = SignalReducer.applyCommandAck(pending, ack(seq = 7, ok = false))
+
+        assertEquals(CommandPhase.FAILED, state.command.phase)
+        assertEquals("The button rejected the command.", state.command.error)
+    }
+
+    @Test
+    fun ackTimeoutFailsWithTheProtocolWording() {
+        val pending = SignalReducer.commandSending(SignalState(), seq = 7, kind = CommandKind.TIMER)
+        val state = SignalReducer.commandTimeout(pending, seq = 7)
+
+        assertEquals(CommandPhase.FAILED, state.command.phase)
+        assertEquals("Button did not answer — time not set.", state.command.error)
+    }
+
+    @Test
+    fun cancelTimeoutSaysTheCancelWasNotApplied() {
+        val pending = SignalReducer.commandSending(SignalState(), seq = 7, kind = CommandKind.CANCEL)
+        val state = SignalReducer.commandTimeout(pending, seq = 7)
+
+        assertEquals("Button did not answer — cancel not applied.", state.command.error)
+    }
+
+    @Test
+    fun staleTimeoutIsIgnored() {
+        val pending = SignalReducer.commandSending(SignalState(), seq = 7, kind = CommandKind.TIMER)
+        val state = SignalReducer.commandTimeout(pending, seq = 6)
+
+        assertEquals(CommandPhase.PENDING, state.command.phase)
+    }
+
+    @Test
+    fun badDurationFailsTheTimerCommand() {
+        val pending = SignalReducer.commandSending(SignalState(), seq = 7, kind = CommandKind.TIMER)
+        val state = SignalReducer.applyError(pending, error(ErrorCode.BAD_DURATION))
+
+        assertEquals(CommandPhase.FAILED, state.command.phase)
+        assertEquals(CommandKind.TIMER, state.command.kind)
     }
 
     @Test
@@ -212,11 +349,17 @@ class SignalReducerTest {
         tEpoch: Long,
         online: Boolean,
         state: ButtonState,
+        remainingSeconds: Long? = null,
     ): HelloOk = HelloOk(
         v = Protocol.VERSION,
         session = "s-test",
         tEpoch = tEpoch,
-        peer = Peer(id = "a1b2c3d4", online = online, state = state),
+        peer = Peer(
+            id = "a1b2c3d4",
+            online = online,
+            state = state,
+            remainingSeconds = remainingSeconds,
+        ),
     )
 
     private fun status(
@@ -224,12 +367,20 @@ class SignalReducerTest {
         deviceOnline: Boolean,
         state: ButtonState,
         appOnline: Boolean,
+        remainingSeconds: Long? = null,
     ): StatusMessage = StatusMessage(
         v = Protocol.VERSION,
         tEpoch = tEpoch,
-        device = DeviceStatus(online = deviceOnline, state = state),
+        device = DeviceStatus(
+            online = deviceOnline,
+            state = state,
+            remainingSeconds = remainingSeconds,
+        ),
         app = AppStatus(online = appOnline),
     )
+
+    private fun ack(seq: Long, ok: Boolean = true): Ack =
+        Ack(v = Protocol.VERSION, seq = seq, ok = ok, stage = AckStage.DELIVERED)
 
     private fun press(seq: Long, tEpoch: Long = 1_700_000_000, from: String? = null): Press =
         Press(v = Protocol.VERSION, seq = seq, tEpoch = tEpoch, from = from)

@@ -54,16 +54,13 @@ async def test_bad_duration_keeps_connection(server_factory) -> None:  # type: i
         assert pong["t_epoch"] == 5
 
 
-async def test_valid_timer_is_not_in_mvp_closes_4400(server_factory) -> None:  # type: ignore[no-untyped-def]
+async def test_cancel_from_device_closes_4400(server_factory) -> None:  # type: ignore[no-untyped-def]
     server = server_factory()
     async with connect(server.ws_url, ping_interval=None) as ws:
-        await send_hello(ws, role="app", id=APP_ID, fw=None)
+        await send_hello(ws)
         await recv_until(ws, "hello_ok")
 
-        await send_json(
-            ws,
-            {"v": 1, "t": "timer", "seq": 3, "duration_s": 60, "t_epoch": 1},
-        )
+        await send_json(ws, {"v": 1, "t": "cancel", "seq": 4, "t_epoch": 1})
         error = await recv_until(ws, "error")
         assert error["code"] == "bad_request"
         code, _ = await expect_close(ws)

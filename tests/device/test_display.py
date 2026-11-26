@@ -54,3 +54,29 @@ def test_defaults_before_sync():
 def test_long_state_is_truncated_not_wrapped():
     lines = display.screen_lines({"state": "SOMETHING VERY LONG"})
     assert lines[2] == "STATE: SOMETHING"
+
+
+def test_countdown_shows_time_left():
+    lines = display.screen_lines(
+        {
+            "ws": True,
+            "app": True,
+            "state": "COUNTDOWN",
+            "time": "10:42:56",
+            "last": "10:41:02",
+            "seq": 7,
+            "left": "02:59:58",
+        }
+    )
+    assert lines[2] == "STATE: COUNTDOWN"
+    assert lines[3] == "LEFT 02:59:58"
+    # 16 columns: "STATE: COUNTDOWN" is exactly the limit.
+    assert all(len(line) <= display.COLS for line in lines)
+
+
+def test_arrived_is_a_plain_state_line():
+    lines = display.screen_lines(
+        {"ws": True, "app": True, "state": "ARRIVED", "left": "00:00:00"}
+    )
+    assert lines[2] == "STATE: ARRIVED"
+    assert lines[3] == "LAST --:--:--"

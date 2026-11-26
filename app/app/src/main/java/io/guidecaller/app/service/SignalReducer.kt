@@ -1,5 +1,7 @@
 package io.guidecaller.app.service
 
+import io.guidecaller.app.net.Ack
+import io.guidecaller.app.net.AckStage
 import io.guidecaller.app.net.ErrorCode
 import io.guidecaller.app.net.ErrorMessage
 import io.guidecaller.app.net.HelloOk
@@ -38,6 +40,11 @@ object SignalReducer {
             // auth_failed belongs to an older session.
             authFailed = false,
             lastError = if (message.peer.online) null else state.lastError,
+            countdownEndsAtLocalEpochSec = countdownDeadline(
+                message.peer.state.name,
+                message.peer.remainingSeconds,
+                nowEpochSec,
+            ),
         )
 
     /** §4.7: `status` refreshes the clock offset and both liveness flags. */
@@ -50,7 +57,72 @@ object SignalReducer {
             // `no_peer` is only relevant while the button is away; drop it once
             // the button is back so the UI banner disappears.
             lastError = if (message.device.online) null else state.lastError,
+            countdownEndsAtLocalEpochSec = countdownDeadline(
+                message.device.state.name,
+                message.device.remainingSeconds,
+                nowEpochSec,
+            ),
         )
+
+    /**
+     * Local-clock deadline for the UI tick. `status` carries `remaining_s` only
+     * at the moment of the frame, so it is converted to `now + remaining_s`.
+     * ARRIVED means zero left; any other state means no countdown.
+     */
+    private fun countdownDeadline(
+        deviceState: String,
+        remainingSeconds: Long?,
+        nowEpochSec: Long,
+    ): Long? = when (deviceState) {
+        "COUNTDOWN" -> remainingSeconds?.let { nowEpochSec + it }
+        "ARRIVED" -> nowEpochSec
+        else -> null
+    }
+
+    /** §4.6: `timer`/`cancel` is sent; the UI shows "waiting for confirmation" until the ack. */
+    fun commandSending(state: SignalState, seq: Long, kind: CommandKind): SignalState =
+        state.copy(command = CommandUi(phase = CommandPhase.PENDING, kind = kind, seq = seq))
+
+    /**
+     * §4.6: `ack(stage=delivered)` for the command in flight. Press acks also
+     * reach the app, so only the tracked `seq` is accepted (command seqs come
+     * from a disjoint range, see [SignalService.COMMAND_SEQ_BASE]).
+     */
+    fun applyCommandAck(state: SignalState, message: Ack): SignalState {
+        val command = state.command
+        if (message.stage != AckStage.DELIVERED) return state
+        if (command.phase != CommandPhase.PENDING || command.seq != message.seq) return state
+        return if (message.ok) {
+            state.copy(command = CommandUi())
+        } else {
+            state.copy(
+                command = CommandUi(
+                    phase = CommandPhase.FAILED,
+                    kind = command.kind,
+                    seq = command.seq,
+                    error = "The button rejected the command.",
+                ),
+            )
+        }
+    }
+
+    /** §4.6: no `ack(delivered)` within 10 s — the command is not applied. */
+    fun commandTimeout(state: SignalState, seq: Long): SignalState {
+        val command = state.command
+        if (command.phase != CommandPhase.PENDING || command.seq != seq) return state
+        val error = when (command.kind) {
+            CommandKind.CANCEL -> "Button did not answer — cancel not applied."
+            else -> "Button did not answer — time not set."
+        }
+        return state.copy(
+            command = CommandUi(
+                phase = CommandPhase.FAILED,
+                kind = command.kind,
+                seq = command.seq,
+                error = error,
+            ),
+        )
+    }
 
     /**
      * §4.3/§4.6: a press is appended to the front of [SignalState.presses].
@@ -77,10 +149,17 @@ object SignalReducer {
         return PressResult(state.copy(presses = presses), added = true)
     }
 
-    /** §4.9: map the two errors that change what the UI shows. */
+    /** §4.9: map the errors that change what the UI shows. */
     fun applyError(state: SignalState, message: ErrorMessage): SignalState = when (message.code) {
         ErrorCode.AUTH_FAILED -> state.copy(authFailed = true)
         ErrorCode.NO_PEER -> state.copy(lastError = CODE_NO_PEER)
+        ErrorCode.BAD_DURATION -> state.copy(
+            command = CommandUi(
+                phase = CommandPhase.FAILED,
+                kind = CommandKind.TIMER,
+                error = "Button rejected the duration (1 minute … 24 hours).",
+            ),
+        )
         else -> state
     }
 

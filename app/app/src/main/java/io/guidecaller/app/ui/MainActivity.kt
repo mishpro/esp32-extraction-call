@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -28,14 +29,18 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -43,11 +48,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.guidecaller.app.BuildConfig
 import io.guidecaller.app.GuidecallerApp
 import io.guidecaller.app.net.ConnectionState
+import io.guidecaller.app.service.CommandBus
+import io.guidecaller.app.service.CommandPhase
 import io.guidecaller.app.service.PressItem
 import io.guidecaller.app.service.SignalBus
 import io.guidecaller.app.service.SignalReducer
 import io.guidecaller.app.service.SignalService
 import io.guidecaller.app.service.SignalState
+import kotlinx.coroutines.delay
 
 /**
  * S3.7 screen: server address, connect/disconnect, live status and recent presses.
@@ -177,6 +185,10 @@ private fun StatusScreen(token: String?, appId: String) {
 
         HorizontalDivider()
 
+        CountdownSection(state = state)
+
+        HorizontalDivider()
+
         PressesSection(presses = state.presses, modifier = Modifier.weight(1f))
     }
 }
@@ -252,6 +264,132 @@ private fun Banner(text: String, container: Color, content: Color) {
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         )
     }
+}
+
+/**
+ * S4: set a countdown on the button or cancel the running one.
+ *
+ * §4.4–4.6: the buttons stay in "waiting" until `ack(stage=delivered)`; after
+ * 10 s without it the UI says the time was not set and allows a retry (the
+ * retry gets a new `seq`, see [SignalService]).
+ */
+@Composable
+private fun CountdownSection(state: SignalState) {
+    var minutes by rememberSaveable { mutableStateOf("") }
+    val minutesValue = minutes.toIntOrNull()
+    val validMinutes = minutesValue != null && minutesValue in 1..MAX_TIMER_MINUTES
+    val pending = state.command.phase == CommandPhase.PENDING
+    val canCommand = state.isConnected && state.deviceOnline && !pending
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(text = "Countdown", style = MaterialTheme.typography.titleMedium)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (preset in listOf(15, 30, 60)) {
+                OutlinedButton(
+                    onClick = { CommandBus.send(CommandBus.Command.SetTimer(preset * 60)) },
+                    enabled = canCommand,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(text = "$preset min")
+                }
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedTextField(
+                value = minutes,
+                onValueChange = { input -> minutes = input.filter(Char::isDigit).take(4) },
+                modifier = Modifier.weight(1f),
+                label = { Text(text = "Minutes (1–$MAX_TIMER_MINUTES)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                isError = minutes.isNotEmpty() && !validMinutes,
+                enabled = canCommand,
+            )
+            Button(
+                onClick = {
+                    minutesValue?.let { CommandBus.send(CommandBus.Command.SetTimer(it * 60)) }
+                    minutes = ""
+                },
+                enabled = canCommand && validMinutes,
+            ) {
+                Text(text = "Set timer")
+            }
+        }
+
+        OutlinedButton(
+            onClick = { CommandBus.send(CommandBus.Command.Cancel) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = canCommand && state.countdownActive,
+        ) {
+            Text(text = "Cancel timer")
+        }
+
+        CountdownStatus(state = state)
+    }
+}
+
+@Composable
+private fun CountdownStatus(state: SignalState) {
+    val command = state.command
+    when {
+        command.phase == CommandPhase.PENDING -> Text(
+            text = "Waiting for the button to confirm…",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+
+        command.phase == CommandPhase.FAILED -> Text(
+            text = command.error ?: "Command failed.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+
+        state.deviceState == "ARRIVED" -> Text(
+            text = "Time is up.",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+
+        state.countdownActive -> RemainingText(state = state)
+
+        else -> Text(
+            text = "No countdown is running.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Ticks locally from the last `status.remaining_s`, so the UI is smooth. */
+@Composable
+private fun RemainingText(state: SignalState) {
+    val deadline = state.countdownEndsAtLocalEpochSec ?: return
+    var now by remember(deadline) { mutableLongStateOf(nowEpochSec()) }
+    LaunchedEffect(deadline) {
+        while (true) {
+            now = nowEpochSec()
+            delay(1_000L)
+        }
+    }
+    val left = deadline - now
+    Text(
+        text = if (left > 0) {
+            "Remaining " + TimeFormat.duration(left)
+        } else {
+            // The button flips to ARRIVED by itself; the server status follows.
+            "Time is up."
+        },
+        style = MaterialTheme.typography.titleSmall,
+    )
 }
 
 @Composable
@@ -338,6 +476,11 @@ private fun PressRow(press: PressItem) {
         )
     }
 }
+
+/** §4.4 allows 60 s … 86400 s, i.e. 1 … 1440 minutes. */
+private const val MAX_TIMER_MINUTES = 1440
+
+private fun nowEpochSec(): Long = System.currentTimeMillis() / 1000
 
 private val SignalState.serviceRunning: Boolean
     get() = connection != ConnectionState.Idle && connection != ConnectionState.Disconnected

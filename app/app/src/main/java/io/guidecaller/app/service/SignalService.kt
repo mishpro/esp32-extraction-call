@@ -9,6 +9,8 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import io.guidecaller.app.net.Ack
+import io.guidecaller.app.net.AckStage
 import io.guidecaller.app.net.ErrorCode
 import io.guidecaller.app.net.ErrorMessage
 import io.guidecaller.app.net.HelloOk
@@ -18,6 +20,7 @@ import io.guidecaller.app.net.Protocol
 import io.guidecaller.app.net.StatusMessage
 import io.guidecaller.app.net.WsClient
 import io.guidecaller.app.notify.Notifications
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +28,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -47,13 +51,29 @@ class SignalService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    @Volatile
     private var client: WsClient? = null
     private var sessionJob: Job? = null
+
+    /** Next `timer`/`cancel` seq; starts high to never collide with press seqs. */
+    private val commandSeq = AtomicLong(COMMAND_SEQ_BASE)
+
+    /** Seq of the command waiting for `ack(delivered)`; 0 means none. */
+    private val pendingAck = AtomicLong(NO_PENDING_ACK)
+    private var ackTimeoutJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
         // Channels must exist before the first notification (and before startForeground).
         Notifications.ensureChannels(this)
+        scope.launch {
+            CommandBus.commands.collect { command ->
+                when (command) {
+                    is CommandBus.Command.SetTimer -> sendTimer(command.durationS)
+                    CommandBus.Command.Cancel -> sendCancel()
+                }
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -78,6 +98,8 @@ class SignalService : Service() {
     override fun onDestroy() {
         sessionJob?.cancel()
         sessionJob = null
+        ackTimeoutJob?.cancel()
+        ackTimeoutJob = null
         client?.disconnect()
         client = null
         scope.cancel()
@@ -135,10 +157,90 @@ class SignalService : Service() {
             is HelloOk -> SignalBus.update { SignalReducer.applyHelloOk(it, message, now) }
             is StatusMessage -> SignalBus.update { SignalReducer.applyStatus(it, message, now) }
             is Press -> handlePress(ws, message, now)
+            is Ack -> handleAck(message)
             is ErrorMessage -> handleError(message)
             else -> Unit
         }
     }
+
+    /** §4.6: remember the command ack and stop its 10 s watchdog. */
+    private fun handleAck(ack: Ack) {
+        if (ack.stage != AckStage.DELIVERED) return
+        if (pendingAck.compareAndSet(ack.seq, NO_PENDING_ACK)) {
+            ackTimeoutJob?.cancel()
+            ackTimeoutJob = null
+        }
+        SignalBus.update { SignalReducer.applyCommandAck(it, ack) }
+    }
+
+    private fun sendTimer(durationS: Int) {
+        if (durationS !in Protocol.MIN_TIMER_DURATION_S..Protocol.MAX_TIMER_DURATION_S) {
+            SignalBus.update { state ->
+                state.copy(
+                    command = CommandUi(
+                        phase = CommandPhase.FAILED,
+                        kind = CommandKind.TIMER,
+                        error = "Duration must be 1 minute … 24 hours.",
+                    ),
+                )
+            }
+            return
+        }
+        sendCommand(CommandKind.TIMER) { seq, tEpoch ->
+            Protocol.timer(seq = seq, durationS = durationS, tEpoch = tEpoch)
+        }
+    }
+
+    private fun sendCancel() {
+        sendCommand(CommandKind.CANCEL) { seq, tEpoch ->
+            Protocol.cancel(seq = seq, tEpoch = tEpoch)
+        }
+    }
+
+    /**
+     * §4.4/§4.6: send a command, show "waiting for confirmation", arm the 10 s
+     * watchdog and let [handleAck] clear it.
+     */
+    private inline fun sendCommand(
+        kind: CommandKind,
+        build: (seq: Long, tEpoch: Long) -> Message,
+    ) {
+        val ws = client
+        if (ws == null) {
+            Log.w(TAG, "${kind.name.lowercase()} without a session")
+            SignalBus.update { state ->
+                state.copy(
+                    command = CommandUi(
+                        phase = CommandPhase.FAILED,
+                        kind = kind,
+                        error = "Not connected to the server.",
+                    ),
+                )
+            }
+            return
+        }
+        val seq = commandSeq.incrementAndGet()
+        val tEpoch = serverEpochSec()
+        SignalBus.update { SignalReducer.commandSending(it, seq, kind) }
+        pendingAck.set(seq)
+        if (!ws.send(build(seq, tEpoch))) {
+            pendingAck.set(NO_PENDING_ACK)
+            SignalBus.update { SignalReducer.commandTimeout(it, seq) }
+            return
+        }
+        ackTimeoutJob?.cancel()
+        ackTimeoutJob = scope.launch {
+            delay(Protocol.ACK_TIMEOUT_MS)
+            if (pendingAck.compareAndSet(seq, NO_PENDING_ACK)) {
+                SignalBus.update { SignalReducer.commandTimeout(it, seq) }
+            }
+        }
+        Log.i(TAG, "${kind.name.lowercase()} seq=$seq")
+    }
+
+    /** Server-scale epoch: the app's clock plus the offset learned from `hello_ok`/`status`. */
+    private fun serverEpochSec(): Long =
+        nowEpochSec() + (SignalBus.state.value.serverOffsetSec ?: 0L)
 
     private fun handlePress(ws: WsClient, press: Press, nowEpochSec: Long) {
         var added = false
@@ -177,6 +279,15 @@ class SignalService : Service() {
         const val EXTRA_URL = "url"
         const val EXTRA_TOKEN = "token"
         const val EXTRA_APP_ID = "app_id"
+
+        /**
+         * Command seqs start here so they can never equal a press `seq` — both
+         * arrive as `ack(stage=delivered)` and the app answers press acks too.
+         */
+        const val COMMAND_SEQ_BASE = 1_000_000L
+
+        /** Sentinel for [pendingAck]; real command seqs start at [COMMAND_SEQ_BASE]. */
+        private const val NO_PENDING_ACK = 0L
 
         fun start(context: Context, url: String, token: String, appId: String) {
             val intent = Intent(context, SignalService::class.java)

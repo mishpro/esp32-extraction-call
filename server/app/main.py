@@ -159,7 +159,7 @@ def _peer_payload(registry: Registry, session: BaseSession) -> PeerState:
                 id=device.id,
                 online=True,
                 state=device.state,
-                remaining_s=0,
+                remaining_s=device.remaining_s(),
             )
     # No peer connected. The schema requires an 8-hex id even when offline.
     return PeerState(
@@ -248,6 +248,11 @@ async def _serve(
             await previous.close(CLOSE_NORMAL, "replaced by new session")
             if isinstance(session, DeviceSession):
                 router.forget_device(session.id)
+
+        if isinstance(session, DeviceSession):
+            # A countdown survives a server restart or a WiFi drop (§8): the
+            # device keeps its deadline in NVS, the server restores its view.
+            router.restore_device_timer(session)
 
         peer = _peer_payload(registry, session)
         hello_ok = dump(
