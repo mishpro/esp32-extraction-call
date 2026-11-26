@@ -89,12 +89,7 @@
 
 ## S6 — FCM: вызов при убитом приложении
 
-**Прогресс (2026-11-27): серверная часть готова, приложение ждёт `google-services.json`.**
-
-- Протокол v1.1: §4.10 `register_push` (идемпотентно, без `seq`/`ack`), `press` дублируется FCM data-сообщением.
-- Сервер: токен хранится в `state.json` (никогда не логируется), `UNREGISTERED` удаляет регистрацию; отправка всегда, параллельно с WS (at-least-once), ошибка FCM не влияет на `ack`; без `FCM_CREDENTIALS` — прежний WS-only. FCM HTTP v1 через `google-auth` + `httpx`, без Firebase Admin SDK.
-- Тесты сервера **76** (+9: регистрация, push при офлайн/онлайн приложении, `no_peer` без токена, удаление мёртвого токена, отказ кнопке, payload/404/500 на mock-транспорте).
-- Осталось: Firebase-проект (`io.nightcall.app`), `PushService` в приложении, очередь `ack(delivered)` при пробуждении процесса, прогон на телефоне.
+**Прогресс (2026-11-27): S6 закрыт.** Протокол v1.1: §4.10 `register_push` (идемпотентно, без `seq`/`ack`), `press` дублируется FCM data-сообщением (`device_id` вместо зарезервированного `from`). Сервер: токен в `state.json` (не логируется), `UNREGISTERED` удаляет регистрацию, отправка всегда параллельно с WS (at-least-once), ошибка FCM не влияет на `ack`; без `FCM_CREDENTIALS` — WS-only; FCM HTTP v1: JWT-bearer через `httpx` + `google-auth` (без Admin SDK и `requests`). Приложение: `PushService`, общий `PressHandler` с WS (дедуп `(from, seq, t_epoch)`), `AckQueue` для `ack(delivered)` после пробуждения, `ensureStarted` без перезапуска живой сессии. Проверено на эмуляторе API 36: убитое приложение → push → уведомление → `ack(delivered)` за ~1.45 с. Тесты: сервер **76**, приложение **72**. Ограничение платформы: `force-stop` блокирует FCM.
 
 ---
 

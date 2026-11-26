@@ -132,6 +132,18 @@ push-уведомления видны (Android группирует их в `si
 Если на локскрине не видно текст уведомления — это настройка приватности Android,
 а не приложения; heads-up и звук приходят.
 
-Осталось: FCM — S6.
+**S6 (FCM), эмулятор API 36:** приложение убито (`kill -9`), WS нет → `press` →
+`push_sent` (сервер) через 250 мс → FCM поднимает процесс → `hello_ok` через
+1.1 с → `register_push` → `ack(delivered)` через 1.15 с; уведомление `signals`
+на экране. Повторный push при живом WS не даёт второго уведомления.
+
+Сборка требует `app/app/google-services.json` (проект Firebase, пакет
+`io.nightcall.app`); файл локальный и в git не попадает. Серверу нужен
+service-account JSON в `server/.secrets/` и `FCM_CREDENTIALS=<path>`.
+
+Проверка push без телефона: `python tools/fake_device.py --url ws://127.0.0.1:8000/ws --interval 1 --count 1`
+при убитом приложении — уведомление должно появиться, в логе сервера
+`push_sent`, затем `ack(delivered)`. `force-stop` приложения блокирует FCM —
+это ограничение Android, а не приложения.
 
 

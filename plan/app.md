@@ -77,7 +77,7 @@ app/
 - при заблокированном экране (`mWakefulness=Dozing`) 8 нажатий реальной кнопки: `press seq 2…9`, каждое подтверждено `ack(delivered)`, push-уведомления видны (Android сгруппировал в `signals`);
 - на кнопке — `WAIT ETA`.
 
-Тестов на JVM: **66** (Protocol 18, Backoff 9, WsClient 2, SignalReducer 28, TimeFormat 9). MVP S0–S3 и S4 (таймер) замкнуты. Дальше S6 (FCM), S5 (BLE), S7 (питание), S8 (стоп-кнопка).
+Тестов на JVM: **72** (Protocol 18, Backoff 9, WsClient 2, SignalReducer 28, TimeFormat 9, PushPayload 4, AckQueue 2). MVP S0–S3, S4 (таймер) и S6 (FCM) замкнуты. Дальше S5 (BLE), S7 (питание), S8 (стоп-кнопка).
 
 ## Реализация S4 (2026-11-26)
 
@@ -97,6 +97,27 @@ app/
 - 1 мин → `timer_arrived` ровно в дедлайн → `ARRIVED`, «Time is up.»;
 - 2 мин → перезагрузка платы через `mpremote` → `timer: restored COUNTDOWN`, сервер восстановил `COUNTDOWN`, приложение продолжило отсчёт с того же дедлайна;
 - `ack(delivered)` от кнопки приходит за 30–90 мс.
+
+## Реализация S6 (2026-11-27)
+
+| Компонент | Как сделано |
+|---|---|
+| Зависимости | `google-services` 4.6.0 + `firebase-bom` 35.2.0 (`firebase-messaging`); `google-services.json` локальный, в git не коммитится |
+| Регистрация | `register_push` после каждого `hello_ok` и при `onNewToken`; токен в `EncryptedSharedPreferences` (`fcm_token`); повтор в одном соединении подавляется |
+| Приём | `PushService : FirebaseMessagingService` → `PushPayload.toPress` (все значения FCM — строки, отправитель в `device_id`: ключ `from` зарезервирован) |
+| Уведомление | `PressHandler` — общий путь с WS: тот же `SignalReducer.applyPress`, поэтому WS+push дают одно уведомление |
+| Ack | `AckQueue` хранит `seq`, пришедшие без сокета; `SignalService` отправляет их после `hello_ok` и по `wake`; `PushService` будит сервис через `ensureStarted` (high-priority FCM — исключение из запрета старта FGS из фона) |
+| Адрес сервера | `SecureStore.serverUrl` запоминается при каждом старте сервиса: push просыпается без activity |
+| Повторный старт | `onStartCommand` с теми же url/app_id/token не переподключает живую сессию |
+
+**Проверено на эмуляторе API 36 (google_apis, GMS есть) + реальная плата:**
+
+- приложение убито (`kill -9`, WS нет) → `press` → `push_sent` через 250 мс → процесс поднят FCM → `hello_ok` через 1.1 с → `register_push` → `ack(delivered)` через 1.15 с; всего ~1.45 с от нажатия до подтверждения;
+- уведомление `signals` «Вызов / Нажатие в HH:MM:SS» показано при отсутствующем процессе; FGS поднят;
+- повторный `onStartCommand` от FCM больше не создаёт вторую сессию (раньше было два `hello_ok` подряд);
+- при живом WS push приходит параллельно, второго уведомления нет (дедуп `(from, seq, t_epoch)`).
+
+Ограничение: `force-stop` приложения (не свайп) блокирует FCM на уровне Android — push не придёт, пока пользователь не запустит приложение.
 
 ## UI MVP
 
