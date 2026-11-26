@@ -1,4 +1,4 @@
-package io.guidecaller.app.service
+package io.nightcall.app.service
 
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow

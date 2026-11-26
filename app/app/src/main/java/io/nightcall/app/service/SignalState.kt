@@ -1,6 +1,6 @@
-package io.guidecaller.app.service
+package io.nightcall.app.service
 
-import io.guidecaller.app.net.ConnectionState
+import io.nightcall.app.net.ConnectionState
 
 /** One delivered press, kept for the UI list. */
 data class PressItem(
@@ -18,7 +18,7 @@ enum class CommandPhase {
     /** Nothing in flight; the countdown (if any) is driven by `status`. */
     IDLE,
 
-    /** Sent, waiting for `ack(stage=delivered)` within [io.guidecaller.app.net.Protocol.ACK_TIMEOUT_MS]. */
+    /** Sent, waiting for `ack(stage=delivered)` within [io.nightcall.app.net.Protocol.ACK_TIMEOUT_MS]. */
     PENDING,
 
     /** No ack in time or the button rejected it; [CommandUi.error] explains. */

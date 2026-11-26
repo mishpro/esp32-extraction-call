@@ -1,4 +1,4 @@
-package io.guidecaller.app.net
+package io.nightcall.app.net
 
 import kotlin.math.roundToLong
 import kotlin.random.Random

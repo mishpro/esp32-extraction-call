@@ -1,12 +1,12 @@
-package io.guidecaller.app.service
+package io.nightcall.app.service
 
-import io.guidecaller.app.net.Ack
-import io.guidecaller.app.net.AckStage
-import io.guidecaller.app.net.ErrorCode
-import io.guidecaller.app.net.ErrorMessage
-import io.guidecaller.app.net.HelloOk
-import io.guidecaller.app.net.Press
-import io.guidecaller.app.net.StatusMessage
+import io.nightcall.app.net.Ack
+import io.nightcall.app.net.AckStage
+import io.nightcall.app.net.ErrorCode
+import io.nightcall.app.net.ErrorMessage
+import io.nightcall.app.net.HelloOk
+import io.nightcall.app.net.Press
+import io.nightcall.app.net.StatusMessage
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

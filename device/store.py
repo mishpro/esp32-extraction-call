@@ -10,7 +10,7 @@ KEY = "deadline_t"
 
 
 class TimerStore:
-    def __init__(self, namespace="guidecaller"):
+    def __init__(self, namespace="nightcall"):
         try:
             import esp32
 

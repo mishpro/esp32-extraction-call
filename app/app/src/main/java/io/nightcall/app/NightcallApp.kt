@@ -1,9 +1,9 @@
-package io.guidecaller.app
+package io.nightcall.app
 
 import android.app.Application
-import io.guidecaller.app.data.SecureStore
+import io.nightcall.app.data.SecureStore
 
-class GuidecallerApp : Application() {
+class NightcallApp : Application() {
 
     /** Single process-wide store; the foreground service (S3.5) will share it. */
     val secureStore: SecureStore by lazy { SecureStore(this) }

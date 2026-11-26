@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://guidecaller.local/schema/messages.schema.json",
-  "title": "Guidecaller WS protocol v1",
+  "$id": "https://nightcall.local/schema/messages.schema.json",
+  "title": "Nightcall WS protocol v1",
   "description": "Машиночитаемая выжимка из drafts/Протокол.md v1.0. Источник правды — сам документ; при расхождении правится Протокол.md, сюда переносится следом.",
   "oneOf": [
     { "$ref": "#/$defs/hello" },

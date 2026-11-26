@@ -1,4 +1,4 @@
-package io.guidecaller.app.notify
+package io.nightcall.app.notify
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -8,10 +8,10 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import io.guidecaller.app.R
-import io.guidecaller.app.service.PressItem
-import io.guidecaller.app.service.SignalReducer
-import io.guidecaller.app.ui.MainActivity
+import io.nightcall.app.R
+import io.nightcall.app.service.PressItem
+import io.nightcall.app.service.SignalReducer
+import io.nightcall.app.ui.MainActivity
 
 /**
  * Notification channels and notifications of the app (drafts/Протокол.md §9).
@@ -60,7 +60,7 @@ object Notifications {
     fun areNotificationsEnabled(context: Context): Boolean =
         NotificationManagerCompat.from(context).areNotificationsEnabled()
 
-    /** Ongoing, silent notification that keeps [io.guidecaller.app.service.SignalService] in the foreground. */
+    /** Ongoing, silent notification that keeps [io.nightcall.app.service.SignalService] in the foreground. */
     fun serviceNotification(context: Context): Notification =
         NotificationCompat.Builder(context, CHANNEL_STATUS)
             .setSmallIcon(R.drawable.ic_signal)

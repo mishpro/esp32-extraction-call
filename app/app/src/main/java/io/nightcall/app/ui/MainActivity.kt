@@ -1,4 +1,4 @@
-package io.guidecaller.app.ui
+package io.nightcall.app.ui
 
 import android.Manifest
 import android.content.Context
@@ -45,16 +45,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.guidecaller.app.BuildConfig
-import io.guidecaller.app.GuidecallerApp
-import io.guidecaller.app.net.ConnectionState
-import io.guidecaller.app.service.CommandBus
-import io.guidecaller.app.service.CommandPhase
-import io.guidecaller.app.service.PressItem
-import io.guidecaller.app.service.SignalBus
-import io.guidecaller.app.service.SignalReducer
-import io.guidecaller.app.service.SignalService
-import io.guidecaller.app.service.SignalState
+import io.nightcall.app.BuildConfig
+import io.nightcall.app.NightcallApp
+import io.nightcall.app.net.ConnectionState
+import io.nightcall.app.service.CommandBus
+import io.nightcall.app.service.CommandPhase
+import io.nightcall.app.service.PressItem
+import io.nightcall.app.service.SignalBus
+import io.nightcall.app.service.SignalReducer
+import io.nightcall.app.service.SignalService
+import io.nightcall.app.service.SignalState
 import kotlinx.coroutines.delay
 
 /**
@@ -62,13 +62,13 @@ import kotlinx.coroutines.delay
  *
  * The socket lives in [SignalService]; the activity only starts/stops the service
  * and observes [SignalBus.state], so the session survives activity recreation and
- * the UI never owns a [io.guidecaller.app.net.WsClient].
+ * the UI never owns a [io.nightcall.app.net.WsClient].
  */
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val store = (application as GuidecallerApp).secureStore
+        val store = (application as NightcallApp).secureStore
         // §4.1 requires a non-empty token even when AUTH_REQUIRED=false: fall back
         // to the build-time dev placeholder and remember it for the service.
         val token = store.token
@@ -125,7 +125,7 @@ private fun StatusScreen(token: String?, appId: String) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Guidecaller",
+                    text = "Nightcall",
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.weight(1f),
                 )
@@ -173,7 +173,7 @@ private fun StatusScreen(token: String?, appId: String) {
             )
             if (token == null) {
                 Text(
-                    text = "Build with -Pguidecaller.token=… (never committed) to connect.",
+                    text = "Build with -Pnightcall.token=… (never committed) to connect.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

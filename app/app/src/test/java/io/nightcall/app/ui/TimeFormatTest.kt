@@ -1,4 +1,4 @@
-package io.guidecaller.app.ui
+package io.nightcall.app.ui
 
 import java.time.ZoneId
 import java.time.ZoneOffset

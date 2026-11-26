@@ -1,7 +1,7 @@
 [project]
-name = "guidecaller-server"
+name = "nightcall-server"
 version = "0.1.0"
-description = "Guidecaller WebSocket server (MVP, stage S1)"
+description = "Nightcall WebSocket server (MVP, stage S1)"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

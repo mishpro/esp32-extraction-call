@@ -16,7 +16,7 @@ from typing import Any
 
 CANONICAL_KEYS = ("event", "device_id", "app_id", "session", "seq")
 
-LOGGER_NAME = "guidecaller"
+LOGGER_NAME = "nightcall"
 
 _logger = logging.getLogger(LOGGER_NAME)
 

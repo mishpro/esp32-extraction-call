@@ -1,4 +1,4 @@
-package io.guidecaller.app.net
+package io.nightcall.app.net
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

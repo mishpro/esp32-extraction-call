@@ -1,4 +1,4 @@
-package io.guidecaller.app.data
+package io.nightcall.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -61,7 +61,7 @@ class SecureStore(context: Context) {
     }
 
     private companion object {
-        const val FILE_NAME = "guidecaller_secure"
+        const val FILE_NAME = "nightcall_secure"
         const val KEY_APP_ID = "app_id"
         const val KEY_TOKEN = "token"
         const val APP_ID_LENGTH = 8

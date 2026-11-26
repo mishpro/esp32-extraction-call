@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Guidecaller"
+rootProject.name = "Nightcall"
 include(":app")

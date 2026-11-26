@@ -1,4 +1,4 @@
-package io.guidecaller.app.net
+package io.nightcall.app.net
 
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit

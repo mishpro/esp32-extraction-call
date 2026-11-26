@@ -20,7 +20,7 @@ app/
   build.gradle.kts, settings.gradle.kts, gradle/libs.versions.toml
   app/
     src/main/AndroidManifest.xml
-    src/main/java/…/GuidecallerApp.kt
+    src/main/java/…/NightcallApp.kt
     src/main/java/…/net/WsClient.kt            # OkHttp WebSocket, reconnect (§6)
     src/main/java/…/net/Protocol.kt            # разбор/сборка сообщений
     src/main/java/…/service/SignalService.kt   # Foreground Service (specialUse) + WS
@@ -31,7 +31,7 @@ app/
     src/main/java/…/notify/Notifications.kt    # каналы signals / status
     src/main/java/…/data/SecureStore.kt        # EncryptedSharedPreferences: app_id, token
     src/main/java/…/ble/ConfigProvisioning.kt  # S5: BLE-клиент (GATT)
-    src/main/java/…/fcm/GuidecallerMessaging.kt # S6: FCM
+    src/main/java/…/fcm/NightcallMessaging.kt # S6: FCM
 ```
 
 ## Требования из §9
@@ -72,7 +72,7 @@ app/
 **Реальный CMF Phone 1 (`A015`, Android 16 / API 36):**
 
 - установка через `adb`, `POST_NOTIFICATIONS` выдан, `app_id 07d4a347`;
-- Doze-whitelist: `user,io.guidecaller.app`;
+- Doze-whitelist: `user,io.nightcall.app`;
 - сервис `isForeground=true`, `types=0x40000000` (`specialUse`);
 - при заблокированном экране (`mWakefulness=Dozing`) 8 нажатий реальной кнопки: `press seq 2…9`, каждое подтверждено `ack(delivered)`, push-уведомления видны (Android сгруппировал в `signals`);
 - на кнопке — `WAIT ETA`.

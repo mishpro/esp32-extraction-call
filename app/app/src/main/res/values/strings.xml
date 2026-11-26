@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Guidecaller</string>
+    <string name="app_name">Nightcall</string>
 
     <!-- Notifications (S3.6); channel names are localised, ids on the wire stay "signals"/"status". -->
     <string name="channel_signals_name">Вызовы</string>

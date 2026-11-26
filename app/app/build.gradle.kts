@@ -4,26 +4,26 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// Dev defaults, never secrets in VCS: override with -Pguidecaller.url=… / -Pguidecaller.token=…
-val devServerUrl: String = providers.gradleProperty("guidecaller.url")
+// Dev defaults, never secrets in VCS: override with -Pnightcall.url=… / -Pnightcall.token=…
+val devServerUrl: String = providers.gradleProperty("nightcall.url")
     .orElse("ws://192.168.1.100:8000/ws")
     .get()
 // Non-empty placeholder: §4.1 requires token >= 1 char even when AUTH_REQUIRED=false.
 // A real secret is provisioned later (S5/S6) and never committed.
-val devToken: String = providers.gradleProperty("guidecaller.token").orElse("dev-token").get()
+val devToken: String = providers.gradleProperty("nightcall.token").orElse("dev-token").get()
 
 fun quoted(value: String): String =
     "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
-    namespace = "io.guidecaller.app"
+    namespace = "io.nightcall.app"
     // OkHttp 5.5.1 and the current AndroidX/Compose artifacts require compiling against API 37.
     // targetSdk stays 36 (plan/app.md); compileSdk only changes which SDK stubs are visible.
     compileSdk = 37
     compileSdkMinor = 2
 
     defaultConfig {
-        applicationId = "io.guidecaller.app"
+        applicationId = "io.nightcall.app"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

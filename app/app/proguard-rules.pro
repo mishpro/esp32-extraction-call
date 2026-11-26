@@ -1,7 +1,7 @@
 # Keep protocol data classes and their serializers (kotlinx-serialization uses them reflectively).
--keepclassmembers class io.guidecaller.app.net.** {
+-keepclassmembers class io.nightcall.app.net.** {
     *** Companion;
 }
--keepclasseswithmembers class io.guidecaller.app.net.** {
+-keepclasseswithmembers class io.nightcall.app.net.** {
     kotlinx.serialization.KSerializer serializer(...);
 }

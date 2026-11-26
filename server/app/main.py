@@ -384,7 +384,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
         log_event("shutdown")
 
-    app = FastAPI(title="Guidecaller server", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Nightcall server", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.registry = registry
     app.state.state_store = state

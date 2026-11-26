@@ -1,4 +1,4 @@
-"""RFC 6455 framing for the Guidecaller button — pure Python, no imports.
+"""RFC 6455 framing for the Nightcall button — pure Python, no imports.
 
 Why no imports: the very same file is copied to the ESP32 and imported on
 CPython 3.12 under pytest.  Only the byte arithmetic of RFC 6455 lives here;

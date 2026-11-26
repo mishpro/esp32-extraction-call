@@ -1,4 +1,4 @@
-# Guidecaller — Android app (S3, шаги 3.1–3.4)
+# Nightcall — Android app (S3, шаги 3.1–3.4)
 
 Нативный Android-клиент: Kotlin + Compose, OkHttp WebSocket, протокол v1.
 
@@ -38,7 +38,7 @@ Wrapper сам скачивает Gradle 9.8.2 (checksum закреплён в `
 Секретов в коде нет. Дефолт для сборки задаётся Gradle-свойствами (в git не попадают):
 
 ```bash
-./gradlew assembleDebug -Pguidecaller.url=ws://192.168.1.50:8000/ws -Pguidecaller.token=<token>
+./gradlew assembleDebug -Pnightcall.url=ws://192.168.1.50:8000/ws -Pnightcall.token=<token>
 ```
 
 **В MVP токен — заглушка `dev-token`.** Авторизация на сервере выключена
@@ -99,14 +99,14 @@ cd server && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 \
     --ws-ping-interval 3600 --ws-ping-timeout 3600
 
 # сборка с адресом эмулятора (10.0.2.2 = loopback хоста)
-cd app && ./gradlew assembleDebug -Pguidecaller.url=ws://10.0.2.2:8000/ws
+cd app && ./gradlew assembleDebug -Pnightcall.url=ws://10.0.2.2:8000/ws
 ./gradlew --stop          # освободить RAM перед AVD
 
-emulator -avd guidecaller -no-window -no-audio -no-boot-anim \
+emulator -avd nightcall -no-window -no-audio -no-boot-anim \
     -gpu swiftshader_indirect -no-snapshot -memory 1536 &
 adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell pm grant io.guidecaller.app android.permission.POST_NOTIFICATIONS
-adb shell am start -n io.guidecaller.app/.ui.MainActivity
+adb shell pm grant io.nightcall.app android.permission.POST_NOTIFICATIONS
+adb shell am start -n io.nightcall.app/.ui.MainActivity
 ```
 
 На эмуляторе проверено: connected, уведомление при нажатии в фоне и с погашенным
@@ -121,14 +121,14 @@ adb shell am start -n io.guidecaller.app/.ui.MainActivity
 `POST_NOTIFICATIONS` выдан, Doze-whitelist:
 
 ```bash
-adb shell dumpsys deviceidle whitelist +io.guidecaller.app
+adb shell dumpsys deviceidle whitelist +io.nightcall.app
 ```
 
 Сервис `isForeground=true`, `types=0x40000000` (`specialUse`). При заблокированном
 экране 8 нажатий реальной кнопки — все `press seq 2…9` подтверждены `ack(delivered)`,
 push-уведомления видны (Android группирует их в `signals`). На кнопке `WAIT ETA`.
 
-В Nothing OS дополнительно выставь **Приложения → Guidecaller → Батарея → Без ограничений**.
+В Nothing OS дополнительно выставь **Приложения → Nightcall → Батарея → Без ограничений**.
 Если на локскрине не видно текст уведомления — это настройка приватности Android,
 а не приложения; heads-up и звук приходят.
 

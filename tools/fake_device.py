@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guidecaller device simulator (CPython + websockets).
+"""Nightcall device simulator (CPython + websockets).
 
 Connects to the server, sends ``hello`` (role=device), presses the imaginary
 button on Enter or on a timer, answers protocol pings and prints every incoming
@@ -35,7 +35,7 @@ from websockets.exceptions import ConnectionClosed
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Guidecaller device/app simulator")
+    parser = argparse.ArgumentParser(description="Nightcall device/app simulator")
     parser.add_argument("--url", default="ws://127.0.0.1:8000/ws")
     parser.add_argument("--id", default="a1b2c3d4", help="8 hex chars")
     parser.add_argument("--token", default="dev-token", help="never printed")

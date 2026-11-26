@@ -1,4 +1,4 @@
-package io.guidecaller.app.service
+package io.nightcall.app.service
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

@@ -1,4 +1,4 @@
-package io.guidecaller.app.service
+package io.nightcall.app.service
 
 import android.app.Service
 import android.content.Context
@@ -9,17 +9,17 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import io.guidecaller.app.net.Ack
-import io.guidecaller.app.net.AckStage
-import io.guidecaller.app.net.ErrorCode
-import io.guidecaller.app.net.ErrorMessage
-import io.guidecaller.app.net.HelloOk
-import io.guidecaller.app.net.Message
-import io.guidecaller.app.net.Press
-import io.guidecaller.app.net.Protocol
-import io.guidecaller.app.net.StatusMessage
-import io.guidecaller.app.net.WsClient
-import io.guidecaller.app.notify.Notifications
+import io.nightcall.app.net.Ack
+import io.nightcall.app.net.AckStage
+import io.nightcall.app.net.ErrorCode
+import io.nightcall.app.net.ErrorMessage
+import io.nightcall.app.net.HelloOk
+import io.nightcall.app.net.Message
+import io.nightcall.app.net.Press
+import io.nightcall.app.net.Protocol
+import io.nightcall.app.net.StatusMessage
+import io.nightcall.app.net.WsClient
+import io.nightcall.app.notify.Notifications
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart

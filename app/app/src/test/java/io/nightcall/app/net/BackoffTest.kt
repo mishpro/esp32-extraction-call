@@ -1,4 +1,4 @@
-package io.guidecaller.app.net
+package io.nightcall.app.net
 
 import kotlin.random.Random
 import org.junit.Assert.assertEquals

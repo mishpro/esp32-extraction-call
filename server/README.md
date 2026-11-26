@@ -1,6 +1,6 @@
-# Guidecaller — сервер (S1)
+# Nightcall — сервер (S1)
 
-Реализация этапа S1: WebSocket-сервер протокола Guidecaller v1.0
+Реализация этапа S1: WebSocket-сервер протокола Nightcall v1.0
 (`drafts/Протокол.md` §2, §4, §5, §8), HTTP-диагностика и симулятор кнопки.
 
 Стек: Python 3.12, FastAPI, uvicorn, Pydantic v2, pytest + pytest-asyncio,
@@ -20,7 +20,7 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 \
 ### Почему uvicorn запускается с `--ws-ping-interval 3600`
 
 У uvicorn есть собственный WS-level ping (по умолчанию каждые 20 с, таймаут
-20 с). Протокол Guidecaller держит **свой** heartbeat на уровне JSON-сообщений
+20 с). Протокол Nightcall держит **свой** heartbeat на уровне JSON-сообщений
 (`{"t":"ping"}` каждые 15 с, 3 пропуска → закрытие, §4.8). Если оставить
 uvicorn-овский ping включённым, получаются два независимых таймера с разными
 таймаутами: клиент может быть закрыт «сверху» раньше, чем протокол успеет
@@ -89,7 +89,7 @@ printf %s 'super-secret' | sha256sum | cut -d' ' -f1
 файл атомарно (tmp-файл → `fsync` → `rename`). Путь по умолчанию —
 `server/.state/state.json`; каталог в `server/.gitignore`. Для продакшена
 задайте `STATE_FILE` вне репозитория (например,
-`/var/lib/guidecaller/state.json`).
+`/var/lib/nightcall/state.json`).
 
 ## Логи
 

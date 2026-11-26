@@ -6,7 +6,7 @@ frames with ping/pong and close (§7.2), blocking-with-deadline reads via
 
 Frame/payload codecs live in ``frames.py``; JSON message builders and the
 incoming-message validator live in ``proto.py``. This module knows nothing
-about Guidecaller message types — it only moves text frames.
+about Nightcall message types — it only moves text frames.
 
 Usage::
 

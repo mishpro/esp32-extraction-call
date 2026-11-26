@@ -1,4 +1,4 @@
-"""Guidecaller protocol messages (JSON) — assembly and parsing.
+"""Nightcall protocol messages (JSON) — assembly and parsing.
 
 Mirrors plan/schema/messages.schema.json (which mirrors drafts/Протокол.md
 §4).  Pure Python: only `json` is imported, so the file runs both on CPython

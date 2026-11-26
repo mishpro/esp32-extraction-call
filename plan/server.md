@@ -78,4 +78,4 @@ cd server && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ## Деплой на VPS (когда появится)
 
-systemd-юнит: `ExecStart=<venv>/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000`, `Restart=always`, `EnvironmentFile=/etc/guidecaller.env` (токены, `AUTH_REQUIRED`). Логи — в journald (`journalctl -u guidecaller -o json`). Порт 8000 открыт наружу, TLS отложен.
+systemd-юнит: `ExecStart=<venv>/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000`, `Restart=always`, `EnvironmentFile=/etc/nightcall.env` (токены, `AUTH_REQUIRED`). Логи — в journald (`journalctl -u nightcall -o json`). Порт 8000 открыт наружу, TLS отложен.
