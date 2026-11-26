@@ -48,6 +48,24 @@ class SecureStore(context: Context) {
             }.apply()
         }
 
+    /** Last server address the user connected to (S6: the FCM wake-up has no activity). */
+    var serverUrl: String?
+        get() = prefs.getString(KEY_SERVER_URL, null)
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrEmpty()) remove(KEY_SERVER_URL) else putString(KEY_SERVER_URL, value)
+            }.apply()
+        }
+
+    /** FCM registration token (§4.10); re-sent on every `hello_ok`. */
+    var fcmToken: String?
+        get() = prefs.getString(KEY_FCM_TOKEN, null)
+        set(value) {
+            prefs.edit().apply {
+                if (value.isNullOrEmpty()) remove(KEY_FCM_TOKEN) else putString(KEY_FCM_TOKEN, value)
+            }.apply()
+        }
+
     private fun newAppId(): String {
         val bytes = ByteArray(4)
         SecureRandom().nextBytes(bytes)
@@ -64,6 +82,8 @@ class SecureStore(context: Context) {
         const val FILE_NAME = "nightcall_secure"
         const val KEY_APP_ID = "app_id"
         const val KEY_TOKEN = "token"
+        const val KEY_SERVER_URL = "server_url"
+        const val KEY_FCM_TOKEN = "fcm_token"
         const val APP_ID_LENGTH = 8
         const val HEX = "0123456789abcdef"
     }

@@ -9,6 +9,8 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.google.firebase.messaging.FirebaseMessaging
+import io.nightcall.app.data.SecureStore
 import io.nightcall.app.net.Ack
 import io.nightcall.app.net.AckStage
 import io.nightcall.app.net.ErrorCode
@@ -20,6 +22,7 @@ import io.nightcall.app.net.Protocol
 import io.nightcall.app.net.StatusMessage
 import io.nightcall.app.net.WsClient
 import io.nightcall.app.notify.Notifications
+import io.nightcall.app.push.PushTokenBus
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -62,8 +65,17 @@ class SignalService : Service() {
     private val pendingAck = AtomicLong(NO_PENDING_ACK)
     private var ackTimeoutJob: Job? = null
 
+    /** Token already sent on this connection; reset by [startSession]. */
+    @Volatile
+    private var sentPushToken: String? = null
+
+    /** Params of the running session; a duplicate start must not reconnect. */
+    @Volatile
+    private var sessionKey: String? = null
+
     override fun onCreate() {
         super.onCreate()
+        alive = true
         // Channels must exist before the first notification (and before startForeground).
         Notifications.ensureChannels(this)
         scope.launch {
@@ -72,6 +84,17 @@ class SignalService : Service() {
                     is CommandBus.Command.SetTimer -> sendTimer(command.durationS)
                     CommandBus.Command.Cancel -> sendCancel()
                 }
+            }
+        }
+        // S6: an ack queued by a push goes out as soon as a socket exists.
+        scope.launch {
+            AckQueue.wake.collect {
+                client?.let { flushAcks(it) }
+            }
+        }
+        scope.launch {
+            PushTokenBus.tokens.collect { token ->
+                client?.let { sendRegisterPush(it, token) }
             }
         }
     }
@@ -90,12 +113,20 @@ class SignalService : Service() {
 
         // Must happen within a few seconds of startForegroundService (§9, ANR otherwise).
         startAsForeground()
+        val key = "$url|$appId|$token"
+        if (client != null && key == sessionKey) {
+            // FCM wake-up or a redelivered intent on top of a live session.
+            return START_REDELIVER_INTENT
+        }
+        sessionKey = key
         startSession(url, token, appId)
         // A system restart re-delivers the last intent, so the socket comes back by itself.
         return START_REDELIVER_INTENT
     }
 
     override fun onDestroy() {
+        alive = false
+        sessionKey = null
         sessionJob?.cancel()
         sessionJob = null
         ackTimeoutJob?.cancel()
@@ -128,6 +159,7 @@ class SignalService : Service() {
         // A second start (redelivery or a new URL) replaces the previous session.
         sessionJob?.cancel()
         client?.disconnect()
+        sentPushToken = null
 
         val ws = WsClient(scope)
         client = ws
@@ -154,7 +186,14 @@ class SignalService : Service() {
     private suspend fun handleMessage(ws: WsClient, message: Message) {
         val now = nowEpochSec()
         when (message) {
-            is HelloOk -> SignalBus.update { SignalReducer.applyHelloOk(it, message, now) }
+            is HelloOk -> {
+                SignalBus.update { SignalReducer.applyHelloOk(it, message, now) }
+                // A new server session may have lost the token (restart, state file
+                // reset), so register again on every hello_ok.
+                sentPushToken = null
+                registerPush(ws)
+                flushAcks(ws)
+            }
             is StatusMessage -> SignalBus.update { SignalReducer.applyStatus(it, message, now) }
             is Press -> handlePress(ws, message, now)
             is Ack -> handleAck(message)
@@ -243,24 +282,43 @@ class SignalService : Service() {
         nowEpochSec() + (SignalBus.state.value.serverOffsetSec ?: 0L)
 
     private fun handlePress(ws: WsClient, press: Press, nowEpochSec: Long) {
-        var added = false
-        SignalBus.update { state ->
-            val result = SignalReducer.applyPress(state, press, nowEpochSec)
-            added = result.added
-            result.state
-        }
-        if (added) {
-            val item = PressItem(
-                seq = press.seq,
-                serverEpoch = press.tEpoch,
-                localEpoch = nowEpochSec,
-                from = press.from,
-            )
-            Notifications.showPress(this, item)
-        }
+        PressHandler.accept(this, press, nowEpochSec)
         // §4.6: the button needs ack(delivered) to leave SENT for WAIT ETA. Sent for
         // duplicates too, which is exactly how a lost ack gets retried.
         ws.send(Protocol.ackDelivered(press.seq))
+        // The WS copy arrived while a push of the same press was queued.
+        AckQueue.remove(press.seq)
+    }
+
+    /** §4.10: the token is idempotent; re-send it after every successful hello. */
+    private fun registerPush(ws: WsClient) {
+        val stored = SecureStore(this).fcmToken
+        if (stored != null) {
+            sendRegisterPush(ws, stored)
+            return
+        }
+        // First connect after install: the token may still be being generated.
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            val token = if (task.isSuccessful) task.result else null
+            if (token.isNullOrEmpty()) return@addOnCompleteListener
+            SecureStore(this).fcmToken = token
+            sendRegisterPush(ws, token)
+        }
+    }
+
+    private fun sendRegisterPush(ws: WsClient, token: String) {
+        // Two paths can race on the first connect (stored token + onNewToken).
+        if (token == sentPushToken) return
+        if (ws.send(Protocol.registerPush(token, serverEpochSec()))) {
+            sentPushToken = token
+        }
+    }
+
+    /** Send the acks of presses that were delivered by FCM before the socket existed. */
+    private fun flushAcks(ws: WsClient) {
+        for (seq in AckQueue.drain()) {
+            ws.send(Protocol.ackDelivered(seq))
+        }
     }
 
     private fun handleError(message: ErrorMessage) {
@@ -289,12 +347,28 @@ class SignalService : Service() {
         /** Sentinel for [pendingAck]; real command seqs start at [COMMAND_SEQ_BASE]. */
         private const val NO_PENDING_ACK = 0L
 
+        /** True between [onCreate] and [onDestroy]; used by [ensureStarted]. */
+        @Volatile
+        private var alive = false
+
         fun start(context: Context, url: String, token: String, appId: String) {
+            // S6: a push wakes the service without the activity, so remember where
+            // to connect; the URL is not a secret, but it lives with the token.
+            SecureStore(context).serverUrl = url
             val intent = Intent(context, SignalService::class.java)
                 .putExtra(EXTRA_URL, url)
                 .putExtra(EXTRA_TOKEN, token)
                 .putExtra(EXTRA_APP_ID, appId)
             ContextCompat.startForegroundService(context, intent)
+        }
+
+        /**
+         * Start only if the service is not running. A push arrives for every press,
+         * so a running service must not restart its session on each message.
+         */
+        fun ensureStarted(context: Context, url: String, token: String, appId: String) {
+            if (alive) return
+            start(context, url, token, appId)
         }
 
         fun stop(context: Context) {

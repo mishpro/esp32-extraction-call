@@ -85,6 +85,10 @@ object Protocol {
 
     fun cancel(seq: Long, tEpoch: Long): CancelMessage =
         CancelMessage(v = VERSION, seq = seq, tEpoch = tEpoch)
+
+    /** `register_push` (S6, §4.10): idempotent, re-sent after every `hello_ok`. */
+    fun registerPush(token: String, tEpoch: Long): RegisterPush =
+        RegisterPush(v = VERSION, token = token, tEpoch = tEpoch)
 }
 
 // --- enums ----------------------------------------------------------------------
@@ -260,6 +264,24 @@ data class CancelMessage(
     init {
         requireVersion(v)
         requireSeq(seq)
+        requireEpoch(tEpoch)
+    }
+}
+
+/** §4.10 — app → server (v1.1): FCM token, idempotent, no `seq` and no `ack`. */
+@Serializable
+@SerialName("register_push")
+data class RegisterPush(
+    @SerialName("v") override val v: Int,
+    @SerialName("token") val token: String,
+    @SerialName("t_epoch") val tEpoch: Long,
+) : Message {
+    init {
+        requireVersion(v)
+        require(token.isNotEmpty() && token.length <= 4096) {
+            "token must be 1..4096 chars"
+        }
+        require(token.none { it.isWhitespace() }) { "token must not contain spaces" }
         requireEpoch(tEpoch)
     }
 }

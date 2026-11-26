@@ -11,7 +11,7 @@ import org.junit.Test
 
 /**
  * Contract tests against plan/schema/messages.schema.json and drafts/Протокол.md §4.
- * All 13 JSON examples from §4 are parsed, re-encoded and compared structurally.
+ * All 14 JSON examples from §4 are parsed, re-encoded and compared structurally.
  */
 class ProtocolTest {
 
@@ -38,6 +38,8 @@ class ProtocolTest {
             """{ "v": 1, "t": "timer", "seq": 3, "duration_s": 10800, "deadline_t": 1793012100, "t_epoch": 1793001300 }""",
         "4.5 cancel" to
             """{ "v": 1, "t": "cancel", "seq": 4, "t_epoch": 1793001400 }""",
+        "4.10 register_push" to
+            """{ "v": 1, "t": "register_push", "token": "cZ1x…:APA91b…", "t_epoch": 1793001700 }""",
         "4.6 ack" to
             """{ "v": 1, "t": "ack", "seq": 7, "ok": true, "stage": "server" }""",
         "4.7 status" to
@@ -57,8 +59,8 @@ class ProtocolTest {
     )
 
     @Test
-    fun `all 13 protocol examples round trip byte-for-byte in JSON structure`() {
-        assertEquals(13, examples.size)
+    fun `all 14 protocol examples round trip byte-for-byte in JSON structure`() {
+        assertEquals(14, examples.size)
         for ((name, raw) in examples) {
             val parsed = Protocol.parse(raw)
             val reencoded = Protocol.encode(parsed)
@@ -82,11 +84,12 @@ class ProtocolTest {
         assertTrue(Protocol.parse(examples[5].second) is TimerCommand)
         assertTrue(Protocol.parse(examples[6].second) is TimerCommand)
         assertTrue(Protocol.parse(examples[7].second) is CancelMessage)
-        assertTrue(Protocol.parse(examples[8].second) is Ack)
-        assertTrue(Protocol.parse(examples[9].second) is StatusMessage)
-        assertTrue(Protocol.parse(examples[10].second) is Ping)
-        assertTrue(Protocol.parse(examples[11].second) is Pong)
-        assertTrue(Protocol.parse(examples[12].second) is ErrorMessage)
+        assertTrue(Protocol.parse(examples[8].second) is RegisterPush)
+        assertTrue(Protocol.parse(examples[9].second) is Ack)
+        assertTrue(Protocol.parse(examples[10].second) is StatusMessage)
+        assertTrue(Protocol.parse(examples[11].second) is Ping)
+        assertTrue(Protocol.parse(examples[12].second) is Pong)
+        assertTrue(Protocol.parse(examples[13].second) is ErrorMessage)
     }
 
     @Test
@@ -102,7 +105,7 @@ class ProtocolTest {
 
     @Test
     fun `status carries device and app liveness`() {
-        val status = Protocol.parse(examples[9].second) as StatusMessage
+        val status = Protocol.parse(examples[10].second) as StatusMessage
         assertTrue(status.device.online)
         assertEquals(ButtonState.COUNTDOWN, status.device.state)
         assertEquals(10_412L, status.device.remainingSeconds)
@@ -146,7 +149,7 @@ class ProtocolTest {
 
     @Test
     fun `ping can be answered with the same t_epoch`() {
-        val ping = Protocol.parse(examples[10].second) as Ping
+        val ping = Protocol.parse(examples[11].second) as Ping
         val pong = Protocol.parse(Protocol.encode(Protocol.pong(ping.tEpoch))) as Pong
         assertEquals(ping.tEpoch, pong.tEpoch)
     }
