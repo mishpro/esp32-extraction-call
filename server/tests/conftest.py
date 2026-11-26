@@ -18,6 +18,7 @@ def server_factory(tmp_path: Path) -> Iterator[Callable[..., TestServer]]:
     counter = itertools.count()
 
     def start(**overrides: object) -> TestServer:
+        push = overrides.pop("push", None)
         options: dict[str, object] = {
             "state_file": tmp_path / f"state-{next(counter)}.json",
             "log_level": "WARNING",
@@ -26,7 +27,7 @@ def server_factory(tmp_path: Path) -> Iterator[Callable[..., TestServer]]:
             "pong_timeout_s": 5.0,
         }
         options.update(overrides)
-        server = TestServer(Settings(**options))  # type: ignore[arg-type]
+        server = TestServer(Settings(**options), push=push)  # type: ignore[arg-type]
         server.start()
         servers.append(server)
         return server

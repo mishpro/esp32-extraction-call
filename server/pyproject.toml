@@ -7,6 +7,9 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
+    # S6: FCM HTTP v1 without the Firebase Admin SDK (OAuth + one POST).
+    "google-auth>=2.35",
+    "httpx>=0.27",
 ]
 
 [dependency-groups]

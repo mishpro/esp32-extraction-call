@@ -24,7 +24,19 @@ _EMPTY: dict[str, Any] = {
     "last_timer": None,
     "last_status": None,
     "last_seq": {},
+    # FCM registration of the app (§4.10); None until it sends register_push.
+    "push": None,
 }
+
+
+def _valid_push(value: Any) -> bool:
+    """A stored registration must carry both the owner and the token."""
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("app_id"), str)
+        and isinstance(value.get("token"), str)
+        and bool(value["token"])
+    )
 
 
 class StateStore:
@@ -51,12 +63,14 @@ class StateStore:
             log_event("state_load_failed", level=logging.WARNING, error="not an object")
             return
         last_seq = data.get("last_seq")
+        push = data.get("push")
         self._data = {
             "version": 1,
             "last_press": data.get("last_press"),
             "last_timer": data.get("last_timer"),
             "last_status": data.get("last_status"),
             "last_seq": dict(last_seq) if isinstance(last_seq, dict) else {},
+            "push": push if _valid_push(push) else None,
         }
         log_event("state_loaded", state_file=str(self.path))
 
@@ -77,6 +91,31 @@ class StateStore:
         """The last ``timer`` forwarded to the button (§8), if still relevant."""
         value = self._data.get("last_timer")
         return copy.deepcopy(value) if isinstance(value, dict) else None
+
+    @property
+    def push_registration(self) -> dict[str, Any] | None:
+        """``{"app_id", "token"}`` of the app that registered for FCM (§4.10)."""
+        value = self._data.get("push")
+        return copy.deepcopy(value) if _valid_push(value) else None
+
+    def set_push(self, app_id: str, token: str) -> None:
+        """Remember the token of the (single, MVP) app registration."""
+        current = self._data.get("push")
+        if isinstance(current, dict) and current.get("app_id") == app_id:
+            if current.get("token") == token:
+                return  # idempotent: re-sent on every connect
+        self._data["push"] = {"app_id": app_id, "token": token}
+        self._save()
+
+    def clear_push(self, app_id: str | None = None) -> None:
+        """Drop the registration, optionally only if it belongs to ``app_id``."""
+        current = self._data.get("push")
+        if not _valid_push(current):
+            return
+        if app_id is not None and current["app_id"] != app_id:
+            return
+        self._data["push"] = None
+        self._save()
 
     def snapshot(self) -> dict[str, Any]:
         return copy.deepcopy(self._data)

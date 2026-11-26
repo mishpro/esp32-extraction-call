@@ -7,6 +7,7 @@ connected, the most recently connected one is used (see ``Registry``).
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import deque
 from typing import Any
 
@@ -23,11 +24,13 @@ from .models import (
     Ping,
     Pong,
     Press,
+    RegisterPush,
     Role,
     Status,
     Timer,
     dump,
 )
+from .push import PushSender
 from .registry import AppSession, BaseSession, DeviceSession, Registry, now_epoch
 from .state import StateStore
 
@@ -35,9 +38,16 @@ from .state import StateStore
 class Router:
     PENDING_LIMIT = 1024
 
-    def __init__(self, registry: Registry, state: StateStore) -> None:
+    def __init__(
+        self,
+        registry: Registry,
+        state: StateStore,
+        push: PushSender | None = None,
+    ) -> None:
         self.registry = registry
         self.state = state
+        #: FCM sender (S6); ``None`` keeps the server WebSocket-only.
+        self.push = push
         # seq -> device_id for presses forwarded but not yet acked by the app
         self.pending_press: dict[int, str] = {}
         # app seq -> (device_id, app_id, kind, forwarded frame) for timer/cancel
@@ -47,6 +57,8 @@ class Router:
         self._commands_delivered: deque[int] = deque(maxlen=256)
         # device_id -> task that flips COUNTDOWN to ARRIVED at deadline_t
         self._timer_tasks: dict[str, asyncio.Task[None]] = {}
+        # in-flight FCM sends; kept referenced so they are not garbage-collected
+        self._push_tasks: set[asyncio.Task[None]] = set()
 
     # -- status ----------------------------------------------------------
 
@@ -104,6 +116,8 @@ class Router:
             await self._timer(session, message)
         elif isinstance(message, Cancel):
             await self._cancel(session, message)
+        elif isinstance(message, RegisterPush):
+            await self._register_push(session, message)
         else:
             raise ProtocolError(
                 ErrorCode.BAD_REQUEST,
@@ -162,13 +176,6 @@ class Router:
         )
 
         peer = self.registry.latest_app()
-        if peer is None:
-            raise ProtocolError(
-                ErrorCode.NO_PEER,
-                "no app connected",
-                seq=message.seq,
-            )
-
         forwarded = dump(
             Press(
                 v=1,
@@ -178,10 +185,19 @@ class Router:
                 sender=session.id,
             )
         )
-        if not await peer.send(forwarded):
+        if peer is not None:
+            if not await peer.send(forwarded):
+                raise ProtocolError(
+                    ErrorCode.NO_PEER,
+                    "app disconnected during delivery",
+                    seq=message.seq,
+                )
+        elif self.state.push_registration is None:
+            # No socket and no push token: the call cannot reach anyone, which
+            # is a real NO_PEER. With a token the press goes out via FCM below.
             raise ProtocolError(
                 ErrorCode.NO_PEER,
-                "app disconnected during delivery",
+                "no app connected",
                 seq=message.seq,
             )
 
@@ -192,6 +208,85 @@ class Router:
         self.state.record_press(forwarded)
         session.state = ButtonState.SENT
         await self.broadcast_status()
+        # Always push, even when the app has a live socket (§4.10): at-least-once
+        # beats losing an evacuation call, and the app dedups by (from, seq, t_epoch).
+        self._push_press(forwarded)
+
+    def _push_press(self, forwarded: dict[str, Any]) -> None:
+        if self.push is None:
+            return
+        registration = self.state.push_registration
+        if registration is None:
+            return
+        task = asyncio.create_task(
+            self._deliver_push(
+                registration["app_id"], registration["token"], forwarded
+            )
+        )
+        self._push_tasks.add(task)
+        task.add_done_callback(self._push_tasks.discard)
+
+    async def _deliver_push(
+        self, app_id: str, token: str, forwarded: dict[str, Any]
+    ) -> None:
+        assert self.push is not None
+        seq = forwarded.get("seq")
+        data = {key: str(value) for key, value in forwarded.items()}
+        try:
+            result = await self.push.send(token, data)
+        except Exception as exc:  # noqa: BLE001 - push must never break press
+            log_event(
+                "push_failed",
+                level=logging.WARNING,
+                app_id=app_id,
+                seq=seq,
+                error=str(exc)[:120],
+            )
+            return
+        if result.ok:
+            log_event("push_sent", app_id=app_id, seq=seq)
+        elif result.unregistered:
+            self.state.clear_push(app_id)
+            log_event(
+                "push_unregistered",
+                level=logging.WARNING,
+                app_id=app_id,
+                seq=seq,
+            )
+        else:
+            log_event(
+                "push_failed",
+                level=logging.WARNING,
+                app_id=app_id,
+                seq=seq,
+                error=result.error,
+            )
+
+    async def _register_push(self, session: BaseSession, message: RegisterPush) -> None:
+        if session.role is not Role.APP or not isinstance(session, AppSession):
+            raise ProtocolError(
+                ErrorCode.BAD_REQUEST,
+                "register_push is only accepted from apps",
+                close_code=CLOSE_PROTOCOL,
+            )
+        self.state.set_push(session.id, message.token)
+        # The token is a secret-ish handle: log its length, never the value (§8).
+        log_event(
+            "register_push",
+            app_id=session.id,
+            session=session.session_id,
+            token_len=len(message.token),
+            push_enabled=self.push is not None,
+        )
+
+    async def aclose(self) -> None:
+        """Cancel in-flight FCM sends and close the sender (lifespan shutdown)."""
+        for task in list(self._push_tasks):
+            task.cancel()
+        if self._push_tasks:
+            await asyncio.gather(*self._push_tasks, return_exceptions=True)
+        if self.push is not None:
+            await self.push.close()
 
     async def _ack(self, session: BaseSession, message: Ack) -> None:
         if isinstance(session, DeviceSession):

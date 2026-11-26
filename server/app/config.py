@@ -67,6 +67,10 @@ class Settings(BaseModel):
     # Persistence (Протокол §8, FR-S-13)
     state_file: Path = DEFAULT_STATE_FILE
 
+    # FCM (S6, protocol v1.1 §4.10). Without credentials push is simply off.
+    fcm_credentials: Path | None = None
+    fcm_project_id: str | None = None
+
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
         source = os.environ if env is None else env
@@ -85,6 +89,11 @@ class Settings(BaseModel):
         }
         if "STATE_FILE" in source:
             values["state_file"] = Path(source["STATE_FILE"])
+        if raw_credentials := source.get("FCM_CREDENTIALS"):
+            # Paths are case-sensitive: do not lowercase them like tokens.
+            values["fcm_credentials"] = Path(raw_credentials).expanduser()
+        if raw_project := source.get("FCM_PROJECT_ID"):
+            values["fcm_project_id"] = raw_project.strip()
         return cls(**values)
 
     def token_hash_for(self, role: Role) -> str | None:

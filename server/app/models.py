@@ -93,6 +93,19 @@ class Cancel(Message):
     t_epoch: int = Field(ge=0)
 
 
+class RegisterPush(Message):
+    """FCM token of an app installation (protocol v1.1 §4.10).
+
+    Fire-and-forget: no ``seq`` and no ``ack``. The message is idempotent, so
+    the app re-sends it on every connect and after every token rotation.
+    """
+
+    v: Literal[1]
+    t: Literal["register_push"]
+    token: str = Field(min_length=1, max_length=4096, pattern=r"^\S+$")
+    t_epoch: int = Field(ge=0)
+
+
 class Ack(Message):
     v: Literal[1]
     t: Literal["ack"]
@@ -145,6 +158,7 @@ INBOUND: dict[str, type[Message]] = {
     "press": Press,
     "timer": Timer,
     "cancel": Cancel,
+    "register_push": RegisterPush,
     "ack": Ack,
     "ping": Ping,
     "pong": Pong,

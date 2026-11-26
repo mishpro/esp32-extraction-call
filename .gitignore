@@ -12,5 +12,9 @@ venv/
 # Секреты — никогда не коммитить (R-18 в ТЗ.md)
 secrets.json
 *.secret
+# FCM service account: can send push for the project (S6)
+server/.secrets/
+# Firebase Android config (project ids, not a secret, but local-only)
+app/app/google-services.json
 # Локальный конфиг платы: WiFi PSK, токен (шаблон — device/config.example.py)
 device/config.py

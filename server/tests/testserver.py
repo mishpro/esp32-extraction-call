@@ -16,12 +16,13 @@ import uvicorn
 
 from app.config import Settings
 from app.main import create_app
+from app.push import PushSender
 
 
 class TestServer:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, push: PushSender | None = None) -> None:
         self.settings = settings
-        self.app = create_app(settings)
+        self.app = create_app(settings, push=push)
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._socket.bind(("127.0.0.1", 0))

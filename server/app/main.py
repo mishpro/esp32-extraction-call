@@ -37,6 +37,7 @@ from .models import (
     parse_client_message,
     parse_hello,
 )
+from .push import FcmPushSender, PushSender
 from .registry import (
     AppSession,
     BaseSession,
@@ -365,13 +366,20 @@ async def _serve(
 # ---------------------------------------------------------------------------
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, push: PushSender | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     setup_logging(settings.log_level)
 
     registry = Registry()
     state = StateStore(settings.state_file)
-    router = Router(registry, state)
+    if push is None and settings.fcm_credentials is not None:
+        try:
+            push = FcmPushSender(
+                settings.fcm_credentials, project_id=settings.fcm_project_id
+            )
+        except ValueError as exc:
+            log_event("push_disabled", level=logging.WARNING, error=str(exc))
+    router = Router(registry, state, push)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -380,9 +388,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "startup",
             state_file=str(settings.state_file),
             auth_required=settings.auth_required,
+            push_enabled=push is not None,
         )
-        yield
-        log_event("shutdown")
+        try:
+            yield
+        finally:
+            log_event("shutdown")
+            await router.aclose()
 
     app = FastAPI(title="Nightcall server", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
