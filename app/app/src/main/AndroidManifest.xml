@@ -3,6 +3,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- S3.6: the press notification on Android 13+; requested at runtime by the UI. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- S3.5: the WebSocket lives in a foreground service (§9). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <application
         android:name=".GuidecallerApp"
         android:allowBackup="false"
@@ -20,6 +26,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- specialUse requires a Play-Console-readable subtype explanation (API 34+). -->
+        <service
+            android:name=".service.SignalService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Persistent WebSocket connection to the evacuation call server" />
+        </service>
     </application>
 
 </manifest>

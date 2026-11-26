@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Guidecaller</string>
+
+    <!-- Notifications (S3.6); channel names are localised, ids on the wire stay "signals"/"status". -->
+    <string name="channel_signals_name">Вызовы</string>
+    <string name="channel_signals_description">Сигнал от кнопки вызова</string>
+    <string name="channel_status_name">Статус</string>
+    <string name="channel_status_description">Постоянное подключение к серверу</string>
+    <string name="service_notification_text">Подключение к серверу активно</string>
+    <string name="press_notification_title">Вызов</string>
+    <string name="press_notification_text">Нажатие в %1$s</string>
 </resources>

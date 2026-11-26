@@ -23,9 +23,11 @@ app/
     src/main/java/…/GuidecallerApp.kt
     src/main/java/…/net/WsClient.kt            # OkHttp WebSocket, reconnect (§6)
     src/main/java/…/net/Protocol.kt            # разбор/сборка сообщений
-    src/main/java/…/service/SignalService.kt   # Foreground Service + StateFlow
+    src/main/java/…/service/SignalService.kt   # Foreground Service (specialUse) + WS
+    src/main/java/…/service/SignalBus.kt       # process-wide StateFlow для UI
+    src/main/java/…/service/SignalReducer.kt   # чистые переходы состояния
     src/main/java/…/ui/MainActivity.kt
-    src/main/java/…/ui/MainViewModel.kt
+    src/main/java/…/ui/TimeFormat.kt
     src/main/java/…/notify/Notifications.kt    # каналы signals / status
     src/main/java/…/data/SecureStore.kt        # EncryptedSharedPreferences: app_id, token
     src/main/java/…/ble/ConfigProvisioning.kt  # S5: BLE-клиент (GATT)
@@ -42,7 +44,7 @@ app/
 ## Протокол в приложении
 
 - `hello` (role=`app`, `id`=app_id, `token`=…) сразу после коннекта; без `hello_ok` в течение 10 с — reconnect с backoff (§6, максимум 60 с).
-- `press` от сервера → показать уведомление (канал `signals`) **и** отдать `ack(seq, stage=delivered)` (§4.6).
+- `press` от сервера → показать уведомление (канал `signals`) **и** отдать `ack(seq, stage=delivered)` (§4.6). Дедуп — по `(from, seq, t_epoch)`, потому что `seq` у кнопки начинается с 1 после каждой перезагрузки; дедуп по одному `seq` терял бы новые вызовы.
 - `ping` → `pong` в течение 10 с.
 - `status` → обновить UI: `device.online`, `device.state`, `app.online`.
 - `error` → по коду: `auth_failed` — не переподключаться, показать `AUTH FAIL`; `no_peer` — показать `NO BUTTON`.
